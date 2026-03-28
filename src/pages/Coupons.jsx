@@ -20,6 +20,8 @@ export default function Coupons() {
   const [awardPoints, setAwardPoints] = useState('');
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [adminForm, setAdminForm] = useState({ code: '', discountForUser: 0, label: 'Admin' });
+  const [showSingleModal, setShowSingleModal] = useState(false);
+  const [singleForm, setSingleForm] = useState({ code: '', discountForUser: 10, label: 'Promo' });
 
   useEffect(() => {
     Promise.all([
@@ -57,6 +59,17 @@ export default function Coupons() {
       setShowAdminModal(false);
       setAdminForm({ code: '', discountForUser: 0, label: 'Admin' });
       toast.success('Cupón admin creado');
+    } catch (e) { toast.error(e.response?.data?.message || 'Error al crear cupón'); }
+  };
+
+  const handleCreateSingle = async () => {
+    if (!singleForm.code) { toast.error('Código requerido'); return; }
+    try {
+      const res = await API.post('/coupons/single-use', singleForm);
+      setCoupons(prev => [res.data, ...prev]);
+      setShowSingleModal(false);
+      setSingleForm({ code: '', discountForUser: 10, label: 'Promo' });
+      toast.success('Cupón de uso único creado');
     } catch (e) { toast.error(e.response?.data?.message || 'Error al crear cupón'); }
   };
 
@@ -106,6 +119,9 @@ export default function Coupons() {
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn btn-secondary" onClick={() => setShowAdminModal(true)}>
             🔑 Cupón Admin
+          </button>
+          <button className="btn btn-secondary" onClick={() => setShowSingleModal(true)}>
+            🎟️ Uso Único
           </button>
           <button className="btn btn-primary" onClick={() => setShowModal(true)}>
             <Plus size={16}/> Nuevo Cupón
@@ -430,6 +446,39 @@ export default function Coupons() {
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setShowAdminModal(false)}>Cancelar</button>
               <button className="btn btn-primary" onClick={handleCreateAdmin}>Crear Cupón Admin</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal cupón de uso único */}
+      {showSingleModal && (
+        <div className="modal-overlay" onClick={() => setShowSingleModal(false)}>
+          <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>🎟️ Cupón de Uso Único</h2>
+              <button className="btn-icon" onClick={() => setShowSingleModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ background: 'rgba(232,184,75,0.08)', border: '1px solid rgba(232,184,75,0.2)', borderRadius: 10, padding: '12px 14px', marginBottom: 20, fontSize: '0.82rem', color: '#f5d06a' }}>
+                🎯 Este cupón solo puede usarlo <strong>un cliente, una sola vez</strong>. Una vez utilizado se desactiva automáticamente. Ideal para regalar a un cliente específico o como premio.
+              </div>
+              <div className="form-group">
+                <label>Código *</label>
+                <input value={singleForm.code} onChange={e => setSingleForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="Ej: REGALO2024, CUMPLE-ANA" />
+              </div>
+              <div className="form-group">
+                <label>Etiqueta interna</label>
+                <input value={singleForm.label} onChange={e => setSingleForm(f => ({ ...f, label: e.target.value }))} placeholder="Ej: Premio sorteo, Cumpleaños..." />
+              </div>
+              <div className="form-group">
+                <label>% de descuento</label>
+                <input type="number" min={1} max={100} value={singleForm.discountForUser} onChange={e => setSingleForm(f => ({ ...f, discountForUser: Number(e.target.value) }))} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setShowSingleModal(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={handleCreateSingle}>Crear Cupón</button>
             </div>
           </div>
         </div>

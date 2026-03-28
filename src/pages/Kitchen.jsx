@@ -18,6 +18,64 @@ const STATUS_LABELS = {
 
 const TARGET_MINUTES = 30;
 
+// Formatea hora en AR
+function fmtHora(date) {
+  return new Date(date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' });
+}
+
+// Calcula readyAt y deliveryAt a partir de los datos del pedido
+function calcDeadlines(order) {
+  const confirmedMins = order.confirmedMinutes || order.estimatedMinutes || TARGET_MINUTES;
+  const deliveryMins = order.deliveryMinutes || 15;
+  const cookMins = confirmedMins - deliveryMins;
+  const base = new Date(order.receivedAt || order.createdAt);
+  const readyAt = new Date(base.getTime() + cookMins * 60000);
+  const deliveryAt = new Date(base.getTime() + confirmedMins * 60000);
+  return { readyAt, deliveryAt, cookMins, deliveryMins };
+}
+
+function CountdownDisplay({ order }) {
+  const { readyAt, deliveryAt, cookMins, deliveryMins } = calcDeadlines(order);
+  const readyAtMs = readyAt.getTime();
+  const [secsLeft, setSecsLeft] = useState(Math.floor((readyAtMs - Date.now()) / 1000));
+
+  useEffect(() => {
+    const id = setInterval(() => setSecsLeft(Math.floor((readyAtMs - Date.now()) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [readyAtMs]);
+
+  const absSeconds = Math.abs(secsLeft);
+  const mins = Math.floor(absSeconds / 60);
+  const secs = absSeconds % 60;
+  const overdue = secsLeft < 0;
+  const urgent = !overdue && secsLeft < 10 * 60;
+  const warning = !overdue && !urgent && secsLeft < 20 * 60;
+
+  const color = overdue ? '#f04444' : urgent ? '#f04444' : warning ? '#eab308' : '#22c55e';
+  const bg = overdue ? 'rgba(240,68,68,0.12)' : urgent ? 'rgba(240,68,68,0.08)' : warning ? 'rgba(234,179,8,0.08)' : 'rgba(34,197,94,0.06)';
+  const label = overdue ? 'Demorado' : urgent ? 'Muy urgente' : warning ? 'Atención' : 'En tiempo';
+
+  return (
+    <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+      <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1.3rem', color, minWidth: 58 }}>
+        {overdue ? '-' : ''}{String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
+      </div>
+      <div style={{ fontSize: '0.72rem', lineHeight: 1.5 }}>
+        <div style={{ fontWeight: 700, color }}>{label}</div>
+        <div style={{ color: 'var(--gray-light)' }}>
+          Listo: <span style={{ color: '#f0f0f8', fontWeight: 600 }}>{fmtHora(readyAt)}</span>
+          {' · '}
+          Entrega: <span style={{ color: '#f0f0f8', fontWeight: 600 }}>{fmtHora(deliveryAt)}</span>
+        </div>
+        <div style={{ color: 'var(--gray)', fontSize: '0.68rem' }}>
+          cocina {cookMins}min + delivery {deliveryMins}min
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function useTimer(startDate) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -50,6 +108,8 @@ function OrderCard({ order, onStatusChange }) {
   const [loading, setLoading] = useState(false);
   const [deliveryType, setDeliveryType] = useState(order.deliveryType || 'delivery');
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmedMinutes, setConfirmedMinutes] = useState(order.estimatedMinutes || 20);
   const [showTicket, setShowTicket] = useState(false);
   const [cancelReason, setCancelReason] = useState('sin_stock');
   const [cancelNotes, setCancelNotes] = useState('');
@@ -64,20 +124,32 @@ function OrderCard({ order, onStatusChange }) {
 
   const handleChange = async () => {
     if (!flow) return;
+    // Si va a confirmar, mostrar modal de tiempo primero
+    if (flow.next === 'confirmed') {
+      setConfirmedMinutes(order.estimatedMinutes || 20);
+      setShowConfirmModal(true);
+      return;
+    }
+    doStatusChange(flow.next, null);
+  };
+
+  const doStatusChange = async (nextStatus, minutes) => {
     setLoading(true);
     try {
-      const res = await API.put(`/orders/${order._id}/status`, { status: flow.next });
-      if (flow.next === 'confirmed') {
+      const body = { status: nextStatus };
+      if (minutes) body.confirmedMinutes = minutes;
+      const res = await API.put(`/orders/${order._id}/status`, body);
+      if (nextStatus === 'confirmed') {
         toast.success(`✅ ${order.orderNumber} confirmado — stock descontado`);
         if (res.data.whatsappSent?.success) toast.success(`📱 WA enviado a ${order.client?.name}`);
         else if (res.data.whatsappSent) toast(`📵 Sin WhatsApp: ${res.data.whatsappSent.reason}`, { icon: '⚠️' });
         setShowTicket(true);
-      } else if (flow.next === 'ready') {
+      } else if (nextStatus === 'ready') {
         toast.success(`🔔 ${order.orderNumber} listo — WA en camino enviado`);
       } else {
-        toast.success(`${order.orderNumber} → ${STATUS_LABELS[flow.next] || flow.next}`);
+        toast.success(`${order.orderNumber} → ${STATUS_LABELS[nextStatus] || nextStatus}`);
       }
-      onStatusChange(order._id, flow.next, res.data.order);
+      onStatusChange(order._id, nextStatus, res.data.order);
     } catch (e) {
       toast.error(e.response?.data?.message || 'Error al actualizar pedido');
     } finally { setLoading(false); }
@@ -230,6 +302,9 @@ function OrderCard({ order, onStatusChange }) {
           )}
         </div>
 
+        {/* Cuenta regresiva */}
+        <CountdownDisplay order={order} />
+
         {/* Acción */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
@@ -260,6 +335,53 @@ function OrderCard({ order, onStatusChange }) {
             )}
           </div>
         </div>
+
+        {/* Modal confirmar tiempo */}
+        {showConfirmModal && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+            onClick={() => setShowConfirmModal(false)}>
+            <div style={{ background: 'var(--card)', border: '2px solid var(--gold)', borderRadius: 16, width: '100%', maxWidth: 380, padding: 24 }}
+              onClick={e => e.stopPropagation()}>
+              <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.5rem', color: 'var(--gold)', marginBottom: 4 }}>⏱️ Confirmar tiempo</div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: 20 }}>
+                El sistema estimó{' '}
+                <strong style={{ color: 'var(--gold)' }}>{order.estimatedMinutes || 20} min</strong>.
+                {' '}Ajustá si hace falta — el cliente recibe este tiempo por WhatsApp.
+              </div>
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>
+                  Tiempo estimado (minutos)
+                </label>
+                {/* Botones rápidos */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                  {[15, 20, 25, 30, 40, 45].map(m => (
+                    <button key={m} onClick={() => setConfirmedMinutes(m)}
+                      style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem',
+                        background: confirmedMinutes === m ? 'var(--gold)' : 'rgba(255,255,255,0.06)',
+                        color: confirmedMinutes === m ? '#000' : 'var(--gray-light)' }}>
+                      {m}′
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number" min="5" max="120"
+                  value={confirmedMinutes}
+                  onChange={e => setConfirmedMinutes(Number(e.target.value))}
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-light)', borderRadius: 10, color: 'var(--white)', padding: '10px 14px', fontSize: '1rem', outline: 'none', textAlign: 'center', fontWeight: 700 }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button className="btn btn-ghost" onClick={() => setShowConfirmModal(false)}>Cancelar</button>
+                <button className="btn btn-primary" disabled={loading} onClick={() => {
+                  setShowConfirmModal(false);
+                  doStatusChange('confirmed', confirmedMinutes);
+                }}>
+                  {loading ? '...' : '✓ Confirmar y avisar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Modal cancelar */}
         {showCancelModal && (
@@ -368,10 +490,21 @@ export default function Kitchen() {
     }
   };
 
+  // Ordenar por urgencia: el que tiene menos tiempo restante hasta readyAt va primero
+  const sortByUrgency = (orders) => [...orders].sort((a, b) => {
+    const getReadyAt = (o) => {
+      const confirmedMins = o.confirmedMinutes || o.estimatedMinutes || 30;
+      const deliveryMins = o.deliveryMinutes || 15;
+      const cookMins = confirmedMins - deliveryMins;
+      return new Date(o.receivedAt || o.createdAt).getTime() + cookMins * 60000;
+    };
+    return getReadyAt(a) - getReadyAt(b);
+  });
+
   const columns = {
-    pending:   orders.filter(o => o.status === 'pending'),
-    confirmed: orders.filter(o => o.status === 'confirmed'),
-    preparing: orders.filter(o => o.status === 'preparing'),
+    pending:   sortByUrgency(orders.filter(o => o.status === 'pending')),
+    confirmed: sortByUrgency(orders.filter(o => o.status === 'confirmed')),
+    preparing: sortByUrgency(orders.filter(o => o.status === 'preparing')),
     ready:     orders.filter(o => o.status === 'ready')
   };
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import API from '../utils/api';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, Save, MapPin, Clock, CreditCard, Users, Star, DollarSign, FileText } from 'lucide-react';
+import { Plus, Trash2, Save, MapPin, Clock, CreditCard, Users, Star, DollarSign, FileText, Lock } from 'lucide-react';
 
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const fmt = n => `$${Number(n || 0).toLocaleString('es-AR')}`;
@@ -28,10 +28,10 @@ export default function Config() {
   // formularios locales
   const [alias, setAlias] = useState('');
   const [notesPlaceholder, setNotesPlaceholder] = useState('Aclaraciones, alergias...');
-  const [deleteOrderPassword, setDeleteOrderPassword] = useState('');
+  const [deleteOrderPassword, setDeleteOrderPassword] = useState('janz2024');
   const [schedule, setSchedule] = useState({ days: [5, 6, 0], openHour: '19:00', closeHour: '23:00' });
   const [zones, setZones] = useState([]);
-  const [newZone, setNewZone] = useState({ name: '', cost: '', freeFrom: '' });
+  const [newZone, setNewZone] = useState({ name: '', cost: '', freeFrom: '', deliveryMinutes: '' });
   const [loyalty, setLoyalty] = useState({ enabled: false, pointsPerPeso: 1, redeemThreshold: 500, couponPercent: 10 });
   const [fixedExpenses, setFixedExpenses] = useState({ luz: 0, gas: 0, agua: 0, alquiler: 0, otros: 0 });
   const [costingParams, setCostingParams] = useState({ avgBurgersPerDay: 30, deliveryCostPerShift: 0 });
@@ -60,7 +60,6 @@ export default function Config() {
         setLoyalty(cfg.loyalty || { enabled: false, pointsPerPeso: 1, redeemThreshold: 500, couponPercent: 10 });
         setFixedExpenses(cfg.fixedExpenses || { luz: 0, gas: 0, agua: 0, alquiler: 0, otros: 0 });
         setCostingParams(cfg.costingParams || { avgBurgersPerDay: 30, deliveryCostPerShift: 0 });
-        setDeleteOrderPassword(cfg.deleteOrderPassword || '');
         setUsers(usersRes.data || []);
       })
       .finally(() => setLoading(false));
@@ -83,17 +82,6 @@ export default function Config() {
       await API.put('/config/notesPlaceholder', { value: notesPlaceholder });
       toast.success('Placeholder guardado');
     } catch { toast.error('Error al guardar placeholder'); }
-    finally { setSaving(''); }
-  };
-
-  // ── Contraseña eliminar pedido ─────────────────────────────────────────────
-  const saveDeletePassword = async () => {
-    if (!deleteOrderPassword.trim()) return toast.error('Ingresá una contraseña');
-    setSaving('deletePassword');
-    try {
-      await API.put('/config/deleteOrderPassword', { value: deleteOrderPassword });
-      toast.success('Contraseña guardada');
-    } catch { toast.error('Error al guardar contraseña'); }
     finally { setSaving(''); }
   };
 
@@ -121,7 +109,7 @@ export default function Config() {
     try {
       const res = await API.post('/config/zones', newZone);
       setZones(z => [...z, res.data]);
-      setNewZone({ name: '', cost: '', freeFrom: '' });
+      setNewZone({ name: '', cost: '', freeFrom: '', deliveryMinutes: '' });
       toast.success('Zona agregada');
     } catch { toast.error('Error al agregar zona'); }
     finally { setSaving(''); }
@@ -232,25 +220,6 @@ export default function Config() {
           </div>
         </Section>
 
-        {/* ── Contraseña para eliminar pedidos ───────────────────────────── */}
-        <Section title="Seguridad — Eliminar pedidos" icon={FileText}>
-          <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: 14 }}>
-            Se pedirá esta contraseña al intentar eliminar un pedido permanentemente. Dejala vacía para desactivar la función.
-          </p>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input
-              type="password"
-              value={deleteOrderPassword}
-              onChange={e => setDeleteOrderPassword(e.target.value)}
-              placeholder="Contraseña para eliminar pedidos..."
-              style={{ flex: 1 }}
-            />
-            <button className="btn btn-primary" onClick={saveDeletePassword} disabled={saving === 'deletePassword'}>
-              <Save size={15} /> {saving === 'deletePassword' ? 'Guardando...' : 'Guardar'}
-            </button>
-          </div>
-        </Section>
-
         {/* ── Horario de atención ────────────────────────────────────────── */}
         <Section title="Horario de atención" icon={Clock}>
           <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: 14 }}>
@@ -316,7 +285,7 @@ export default function Config() {
                     placeholder="Nombre del barrio"
                     style={{ marginBottom: 8 }}
                   />
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
                     <div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: 4 }}>Costo $</div>
                       <input type="number" value={zone.cost} onChange={e => updateZoneField(zone.id, 'cost', Number(e.target.value))} />
@@ -324,6 +293,10 @@ export default function Config() {
                     <div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: 4 }}>Gratis desde $</div>
                       <input type="number" value={zone.freeFrom} onChange={e => updateZoneField(zone.id, 'freeFrom', Number(e.target.value))} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: 4 }}>Delivery (min)</div>
+                      <input type="number" value={zone.deliveryMinutes || ''} onChange={e => updateZoneField(zone.id, 'deliveryMinutes', Number(e.target.value))} placeholder="15" />
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -342,7 +315,7 @@ export default function Config() {
               <label>Barrio</label>
               <input value={newZone.name} onChange={e => setNewZone(z => ({ ...z, name: e.target.value }))} placeholder="ej: Villa Crespo" />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
               <div className="form-group" style={{ margin: 0 }}>
                 <label>Costo $</label>
                 <input type="number" value={newZone.cost} onChange={e => setNewZone(z => ({ ...z, cost: e.target.value }))} placeholder="0" />
@@ -350,6 +323,10 @@ export default function Config() {
               <div className="form-group" style={{ margin: 0 }}>
                 <label>Gratis desde $</label>
                 <input type="number" value={newZone.freeFrom} onChange={e => setNewZone(z => ({ ...z, freeFrom: e.target.value }))} placeholder="0" />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Delivery (min)</label>
+                <input type="number" value={newZone.deliveryMinutes} onChange={e => setNewZone(z => ({ ...z, deliveryMinutes: e.target.value }))} placeholder="15" />
               </div>
             </div>
             <button className="btn btn-primary w-full" onClick={addZone} disabled={saving === 'zone'}>
@@ -654,6 +631,30 @@ export default function Config() {
           }} disabled={saving === 'orderLimits'}>
             <Save size={15} /> {saving === 'orderLimits' ? 'Guardando...' : 'Guardar límites'}
           </button>
+        </Section>
+
+      {/* Contraseña para eliminar pedidos */}
+        <Section title="Seguridad" icon={Lock}>
+          <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: 14 }}>
+            Contraseña requerida para eliminar pedidos del historial.
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input
+              type="password"
+              value={deleteOrderPassword}
+              onChange={e => setDeleteOrderPassword(e.target.value)}
+              placeholder="Contraseña para eliminar pedidos"
+              style={{ flex: 1 }}
+            />
+            <button className="btn btn-primary" onClick={async () => {
+              setSaving('deletePass');
+              try { await API.put('/config/deleteOrderPassword', { value: deleteOrderPassword }); toast.success('Contraseña actualizada'); }
+              catch { toast.error('Error'); }
+              finally { setSaving(''); }
+            }} disabled={saving === 'deletePass'}>
+              <Save size={15} /> {saving === 'deletePass' ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
         </Section>
 
       </div>

@@ -64,20 +64,33 @@ function TrackingBar({ status }) {
 // ── Modal de adicionales ──────────────────────────────────────────────────────
 function AdditionalsModal({ product, availableAdditionals, onConfirm, onClose }) {
   const [selected, setSelected] = useState({});
+  const [collapsed, setCollapsed] = useState({});
+
+  // Extras con cantidad (burger y papas)
   const toggle = (add) => setSelected(prev => prev[add._id] ? (({ [add._id]: _, ...rest }) => rest)(prev) : { ...prev, [add._id]: 1 });
   const changeQty = (addId, delta) => setSelected(prev => {
     const newQty = (prev[addId] || 1) + delta;
     if (newQty <= 0) return (({ [addId]: _, ...rest }) => rest)(prev);
     return { ...prev, [addId]: newQty };
   });
+
+  // Salsas toggle on/off (sin cantidad)
+  const toggleSalsa = (add) => setSelected(prev => prev[add._id] ? (({ [add._id]: _, ...rest }) => rest)(prev) : { ...prev, [add._id]: 1 });
+
+  const toggleCollapse = (key) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
+
   const extraTotal = availableAdditionals.reduce((s, a) => selected[a._id] ? s + a.price * selected[a._id] : s, 0);
+
   const handleConfirm = () => {
     const additionals = availableAdditionals.filter(a => selected[a._id]).map(a => ({ additional: a._id, name: a.name, unitPrice: a.price, quantity: selected[a._id] }));
     onConfirm(additionals);
   };
+
   const burgerAdds = availableAdditionals.filter(a => a.category === 'hamburguesa' || a.category === 'adicional');
   const papasAdds  = availableAdditionals.filter(a => a.category === 'papas');
   const salsaAdds  = availableAdditionals.filter(a => a.category === 'salsa');
+
+  // Item con cantidad (+/−)
   const AdditionalItem = ({ add }) => {
     const qty = selected[add._id] || 0;
     return (
@@ -101,22 +114,70 @@ function AdditionalsModal({ product, availableAdditionals, onConfirm, onClose })
       </div>
     );
   };
-  const GroupLabel = ({ emoji, label }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, marginTop: 4 }}>
-      <span style={{ fontSize: '0.9rem' }}>{emoji}</span>
-      <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#E8B84B', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</span>
-      <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)', marginLeft: 4 }} />
-    </div>
-  );
+
+  // Item salsa — toggle sin cantidad
+  const SalsaItem = ({ add }) => {
+    const active = !!selected[add._id];
+    return (
+      <button onClick={() => toggleSalsa(add)}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', background: active ? 'rgba(232,184,75,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${active ? 'rgba(232,184,75,0.4)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '12px 14px', marginBottom: 8, cursor: 'pointer', transition: 'all 0.2s' }}>
+        <div>
+          <div style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem' }}>{add.emoji} {add.name}</div>
+          {add.description && <div style={{ color: '#555', fontSize: '0.73rem', marginTop: 2 }}>{add.description}</div>}
+          {add.price > 0 && <div style={{ color: '#E8B84B', fontWeight: 700, fontSize: '0.88rem', marginTop: 4 }}>{fmt(add.price)}</div>}
+        </div>
+        <div style={{ width: 24, height: 24, borderRadius: '50%', border: `2px solid ${active ? '#E8B84B' : 'rgba(255,255,255,0.15)'}`, background: active ? '#E8B84B' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.2s' }}>
+          {active && <span style={{ color: '#000', fontSize: '0.75rem', fontWeight: 900 }}>✓</span>}
+        </div>
+      </button>
+    );
+  };
+
+  // Grupo colapsable
+  const Group = ({ groupKey, emoji, label, children, count }) => {
+    const isCollapsed = collapsed[groupKey];
+    return (
+      <div style={{ marginBottom: 4 }}>
+        <button onClick={() => toggleCollapse(groupKey)}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 0', marginBottom: isCollapsed ? 0 : 6 }}>
+          <span style={{ fontSize: '0.9rem' }}>{emoji}</span>
+          <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#E8B84B', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</span>
+          {count > 0 && <span style={{ background: '#E8B84B', color: '#000', borderRadius: 100, fontSize: '0.6rem', fontWeight: 800, padding: '1px 7px' }}>{count}</span>}
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)', marginLeft: 4 }} />
+          <span style={{ color: '#555', fontSize: '0.75rem', marginLeft: 4 }}>{isCollapsed ? '▸' : '▾'}</span>
+        </button>
+        {!isCollapsed && children}
+      </div>
+    );
+  };
+
+  const burgerCount = burgerAdds.filter(a => selected[a._id]).length;
+  const papasCount  = papasAdds.filter(a => selected[a._id]).length;
+  const salsaCount  = salsaAdds.filter(a => selected[a._id]).length;
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 200 }}>
       <div style={{ background: '#0f0f0f', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 520, padding: 24, maxHeight: '85vh', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.06)', borderBottom: 'none' }}>
         <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 99, margin: '0 auto 20px' }} />
         <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'white', marginBottom: 2, letterSpacing: '-0.3px' }}>{product.name} <span style={{ color: '#E8B84B' }}>{product.variant}</span></div>
         <div style={{ color: '#444', fontSize: '0.82rem', marginBottom: 20 }}>Personalizá tu pedido</div>
-        {burgerAdds.length > 0 && (<><GroupLabel emoji="🍔" label="Para la hamburguesa" />{burgerAdds.map(add => <AdditionalItem key={add._id} add={add} />)}</>)}
-        {papasAdds.length > 0 && (<div style={{ marginTop: burgerAdds.length > 0 ? 16 : 0 }}><GroupLabel emoji="🍟" label="Para las papas" />{papasAdds.map(add => <AdditionalItem key={add._id} add={add} />)}</div>)}
-        {salsaAdds.length > 0 && (<div style={{ marginTop: 16 }}><GroupLabel emoji="🫙" label="Salsas" />{salsaAdds.map(add => <AdditionalItem key={add._id} add={add} />)}</div>)}
+
+        {burgerAdds.length > 0 && (
+          <Group groupKey="burger" emoji="🍔" label="Para la hamburguesa" count={burgerCount}>
+            {burgerAdds.map(add => <AdditionalItem key={add._id} add={add} />)}
+          </Group>
+        )}
+        {papasAdds.length > 0 && (
+          <Group groupKey="papas" emoji="🍟" label="Para las papas" count={papasCount}>
+            {papasAdds.map(add => <AdditionalItem key={add._id} add={add} />)}
+          </Group>
+        )}
+        {salsaAdds.length > 0 && (
+          <Group groupKey="salsas" emoji="🫙" label="Salsas" count={salsaCount}>
+            {salsaAdds.map(add => <SalsaItem key={add._id} add={add} />)}
+          </Group>
+        )}
+
         <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16, marginTop: 16, display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: '#666', border: '1px solid rgba(255,255,255,0.08)', padding: '13px', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
           <button onClick={handleConfirm} style={{ flex: 2, background: '#E8B84B', color: '#000', border: 'none', padding: '13px', borderRadius: 10, fontWeight: 800, cursor: 'pointer', fontSize: '0.95rem' }}>
@@ -233,16 +294,6 @@ export default function PublicOrder() {
   const discount = activeDiscountPercent > 0 ? Math.round(total * activeDiscountPercent / 100) : 0;
   const totalWithDiscount = total - discount + (deliveryType === 'delivery' ? deliveryCost : 0);
 
-  // #6 — banner "te falta $X para envío gratis"
-  // Usa la zona seleccionada si hay, si no busca cualquier zona con freeFrom > 0
-  const selectedZoneData = zones.find(z => z.id === selectedZone);
-  const referenceZone = selectedZoneData || zones.find(z => z.freeFrom > 0);
-  const freeFromThreshold = referenceZone?.freeFrom || 0;
-  const amountLeftForFree = (deliveryType !== 'takeaway' && freeFromThreshold > 0 && total < freeFromThreshold)
-    ? Math.max(0, freeFromThreshold - total)
-    : 0;
-  const freeProgressPct = freeFromThreshold > 0 ? Math.min(100, (total / freeFromThreshold) * 100) : 0;
-
   const handleAddToCart = (product) => {
     const existing = cart.find(i => i.product === product._id);
     if (existing) setCart(c => c.map(i => i.product === product._id ? { ...i, quantity: i.quantity + 1 } : i));
@@ -302,10 +353,10 @@ export default function PublicOrder() {
   if (systemDown) return (
     <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ textAlign: 'center', maxWidth: 400 }}>
-        <div style={{ fontSize: '3rem', marginBottom: 16 }}>🔧🥴</div>
+        <div style={{ fontSize: '3rem', marginBottom: 16 }}>🔧</div>
         <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#E8B84B', marginBottom: 12 }}>Sistema temporalmente fuera de servicio</div>
         <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem', marginBottom: 24, lineHeight: 1.7 }}>Por favor realizá tu pedido por WhatsApp.</div>
-        <a href="https://wa.me/541140495908" target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: '#25D366', color: 'white', padding: '14px 24px', borderRadius: 12, fontWeight: 700, textDecoration: 'none' }}>👉 Ir a Whatsapp de Janz 👈</a>
+        {businessWhatsapp && <a href={`https://wa.me/54${businessWhatsapp.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: '#25D366', color: 'white', padding: '14px 24px', borderRadius: 12, fontWeight: 700, textDecoration: 'none' }}>💬 Pedido por WhatsApp</a>}
       </div>
     </div>
   );
@@ -370,7 +421,7 @@ export default function PublicOrder() {
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
         <div style={{ background: '#111', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '28px 24px 36px', maxHeight: '90vh', overflowY: 'auto' }}>
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <img src={logoJanz} alt="Janz Burgers" style={{ height: 56, objectFit: 'contain', marginBottom: 12, display: 'block', margin: '0 auto 12px' }} />
+            <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>🍔</div>
             <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.8rem', color: '#E8B84B', marginBottom: 4 }}>Bienvenido a Janz Burgers!</div>
             <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>Así funciona el sistema de pedidos</div>
           </div>
@@ -437,7 +488,7 @@ export default function PublicOrder() {
             <div style={{ fontSize: 'clamp(2rem, 7vw, 3.8rem)', fontWeight: 900, lineHeight: 1, letterSpacing: '-2px', color: 'white' }}>
               PEDÍ. DISFRUTÁ.<br /><span style={{ color: '#E8B84B' }}>REPETÍ.</span>
             </div>
-            <div style={{ color: 'rgba(255, 255, 255, 0.79)', fontSize: '0.82rem', lineHeight: 1.6, marginTop: 10, marginBottom: 10, maxWidth: 420 }}>
+            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.82rem', lineHeight: 1.6, marginTop: 10, marginBottom: 10, maxWidth: 420 }}>
               Emprendimos y crecimos para romper el molde. <br /> Pan artesanal sin conservantes hecho por nosotros, ingredientes de calidad para un excelente producto y un sabor con identidad.
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -527,16 +578,6 @@ export default function PublicOrder() {
                 })}
               </div>
             )}
-            {amountLeftForFree > 0 && (
-              <div style={{ background: 'rgba(232,184,75,0.07)', border: '1px solid rgba(232,184,75,0.25)', borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
-                <div style={{ fontSize: '0.85rem', color: '#E8B84B', fontWeight: 700, marginBottom: 8 }}>
-                  🛵 ¡Agregá {fmt(amountLeftForFree)} más y el envío es gratis!
-                </div>
-                <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 6, height: 6 }}>
-                  <div style={{ background: '#E8B84B', height: 6, borderRadius: 6, width: `${freeProgressPct}%`, transition: 'width 0.4s' }} />
-                </div>
-              </div>
-            )}
 
             <div style={{ marginBottom: 14 }}><label style={labelStyle}>Nombre y apellido *</label><input value={client.name} onChange={e => setClient(c => ({ ...c, name: e.target.value }))} placeholder="Tu nombre completo" style={inputStyle} /></div>
             <div style={{ marginBottom: 14 }}><label style={labelStyle}>WhatsApp *</label><input value={client.whatsapp} onChange={e => setClient(c => ({ ...c, whatsapp: e.target.value }))} placeholder="Ej: 1123456789" type="tel" style={inputStyle} /></div>
@@ -599,8 +640,6 @@ export default function PublicOrder() {
               </div>
               {couponStatus && <div style={{ marginTop: 6, fontSize: '0.8rem', color: couponStatus.valid ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{couponStatus.valid ? '✅' : '❌'} {couponStatus.message}</div>}
             </div>
-
-            
 
             <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 16, marginBottom: 20, border: '1px solid rgba(255,255,255,0.05)' }}>
               <div style={{ fontWeight: 700, marginBottom: 12, color: '#E8B84B', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Resumen del pedido</div>
@@ -706,19 +745,19 @@ export default function PublicOrder() {
                 </div>
               )}
 
-              <div style={{ textAlign: 'center', padding: '20px 0 8px', borderTop: '1px solid rgba(255, 255, 255, 0.14)' }}>
-                <img src={logoJanz} alt="Janz" style={{ height: 35, display: 'block', margin: '0 auto 6px' }} />
-                <div style={{ color: 'rgb(255, 255, 255)', fontSize: '0.9rem', letterSpacing: '0.05em' }}>Pedí, Disfrutá, Repetí. <br /> Desde 2020 <br />PWA By Gianfranco Buzzelatto  </div>
+              <div style={{ textAlign: 'center', padding: '20px 0 8px', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                <img src={logoJanz} alt="Janz" style={{ height: 28, opacity: 0.15, display: 'block', margin: '0 auto 6px' }} />
+                <div style={{ color: 'rgba(255,255,255,0.12)', fontSize: '0.7rem', letterSpacing: '0.05em' }}>Janz Burgers · Pedí, Mordé, Repetí.</div>
               </div>
             </div>
 
             {/* Sidebar carrito — solo desktop */}
             <div className="janz-sidebar">
               <div style={{ position: 'sticky', top: 20 }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14 }}>Tu pedido</div>
+                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#2a2a2a', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14 }}>Tu pedido</div>
                 <div style={{ background: '#0f0f0f', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, padding: 20 }}>
                   {cart.length === 0 ? (
-                    <div style={{ color: '#c4c4c4', fontSize: '0.85rem', textAlign: 'center', padding: '20px 0' }}>Agregá productos para empezar</div>
+                    <div style={{ color: '#2a2a2a', fontSize: '0.85rem', textAlign: 'center', padding: '20px 0' }}>Agregá productos para empezar</div>
                   ) : (
                     <>
                       {cart.map((item, i) => (
@@ -734,16 +773,6 @@ export default function PublicOrder() {
                         <span style={{ fontWeight: 700, color: '#E8B84B', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total</span>
                         <span style={{ fontSize: '1.4rem', fontWeight: 900, color: 'white', letterSpacing: '-0.5px' }}>{fmt(total)}</span>
                       </div>
-                      {amountLeftForFree > 0 && (
-                        <div style={{ background: 'rgba(232,184,75,0.07)', border: '1px solid rgba(232,184,75,0.2)', borderRadius: 10, padding: '10px 12px', marginTop: 12 }}>
-                          <div style={{ fontSize: '0.78rem', color: '#E8B84B', fontWeight: 700, marginBottom: 6 }}>
-                            🛵 Agregá {fmt(amountLeftForFree)} más y el envío es gratis
-                          </div>
-                          <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 4, height: 5 }}>
-                            <div style={{ background: '#E8B84B', height: 5, borderRadius: 4, width: `${freeProgressPct}%`, transition: 'width 0.4s' }} />
-                          </div>
-                        </div>
-                      )}
                       <button onClick={() => setStep('form')} style={{ width: '100%', background: '#E8B84B', color: '#000', border: 'none', padding: '13px', borderRadius: 10, fontWeight: 800, cursor: 'pointer', fontSize: '0.95rem', marginTop: 14 }}>
                         Confirmar pedido →
                       </button>
@@ -759,16 +788,6 @@ export default function PublicOrder() {
       {/* Botón flotante carrito — solo móvil */}
       {cart.length > 0 && step === 'menu' && (
         <div className="janz-cart-float" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 100 }}>
-          {amountLeftForFree > 0 && (
-            <div style={{ background: 'rgba(10,10,10,0.97)', border: '1px solid rgba(232,184,75,0.25)', borderRadius: 10, padding: '8px 14px', marginBottom: 8, backdropFilter: 'blur(8px)' }}>
-              <div style={{ fontSize: '0.75rem', color: '#E8B84B', fontWeight: 700, marginBottom: 5, whiteSpace: 'nowrap' }}>
-                🛵 Agregá {fmt(amountLeftForFree)} más y el envío es gratis
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, height: 4 }}>
-                <div style={{ background: '#E8B84B', height: 4, borderRadius: 4, width: `${freeProgressPct}%`, transition: 'width 0.4s' }} />
-              </div>
-            </div>
-          )}
           <button onClick={() => setStep('form')} style={{ background: '#E8B84B', color: '#000', border: 'none', padding: '14px 28px', borderRadius: 100, fontWeight: 800, cursor: 'pointer', fontSize: '0.95rem', boxShadow: '0 8px 32px rgba(232,184,75,0.3)', whiteSpace: 'nowrap', letterSpacing: '-0.2px' }}>
             🛒 Ver pedido ({cart.reduce((s, i) => s + i.quantity, 0)}) — {fmt(total)}
           </button>
