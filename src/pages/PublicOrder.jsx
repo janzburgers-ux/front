@@ -21,7 +21,7 @@ const inputStyle = {
 };
 
 function itemTotal(item) {
-  const base = item.unitPrice * item.quantity;
+  const base   = item.unitPrice * item.quantity;
   const extras = (item.additionals || []).reduce((s, a) => s + a.unitPrice * (a.quantity || 1), 0);
   return base + extras;
 }
@@ -63,34 +63,64 @@ function TrackingBar({ status }) {
 
 // ── Modal de adicionales ──────────────────────────────────────────────────────
 function AdditionalsModal({ product, availableAdditionals, onConfirm, onClose }) {
-  const [selected, setSelected] = useState({});
+  const [selected,  setSelected]  = useState({});
   const [collapsed, setCollapsed] = useState({});
 
-  // Extras con cantidad (burger y papas)
-  const toggle = (add) => setSelected(prev => prev[add._id] ? (({ [add._id]: _, ...rest }) => rest)(prev) : { ...prev, [add._id]: 1 });
+  const toggle    = (add) => setSelected(prev => prev[add._id] ? (({ [add._id]: _, ...rest }) => rest)(prev) : { ...prev, [add._id]: 1 });
   const changeQty = (addId, delta) => setSelected(prev => {
     const newQty = (prev[addId] || 1) + delta;
     if (newQty <= 0) return (({ [addId]: _, ...rest }) => rest)(prev);
     return { ...prev, [addId]: newQty };
   });
-
-  // Salsas toggle on/off (sin cantidad)
-  const toggleSalsa = (add) => setSelected(prev => prev[add._id] ? (({ [add._id]: _, ...rest }) => rest)(prev) : { ...prev, [add._id]: 1 });
-
+  const toggleSalsa  = (add) => setSelected(prev => prev[add._id] ? (({ [add._id]: _, ...rest }) => rest)(prev) : { ...prev, [add._id]: 1 });
   const toggleCollapse = (key) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
 
   const extraTotal = availableAdditionals.reduce((s, a) => selected[a._id] ? s + a.price * selected[a._id] : s, 0);
 
   const handleConfirm = () => {
-    const additionals = availableAdditionals.filter(a => selected[a._id]).map(a => ({ additional: a._id, name: a.name, unitPrice: a.price, quantity: selected[a._id] }));
+    const additionals = availableAdditionals
+      .filter(a => selected[a._id])
+      .map(a => ({ additional: a._id, name: a.name, unitPrice: a.price, quantity: selected[a._id] }));
     onConfirm(additionals);
   };
 
-  const burgerAdds = availableAdditionals.filter(a => a.category === 'hamburguesa' || a.category === 'adicional');
-  const papasAdds  = availableAdditionals.filter(a => a.category === 'papas');
-  const salsaAdds  = availableAdditionals.filter(a => a.category === 'salsa');
+  // ── Filtrar adicionales según el tipo de producto ──────────────────────────
+  // burger → muestra adicionales de burger + papas (combo) + salsas
+  // papas  → muestra solo adicionales de papas + salsas
+  // otro   → muestra todos los adicionales + salsas
+  //
+  // Si un adicional no tiene appliesTo definido, se deduce de su categoría:
+  //   hamburguesa/adicional → 'burger'
+  //   papas                 → 'papas'
+  //   salsa                 → siempre disponible (se filtra aparte)
+  const resolveAppliesTo = (a) => {
+    if (a.appliesTo) return a.appliesTo;
+    if (a.category === 'hamburguesa' || a.category === 'adicional') return 'burger';
+    if (a.category === 'papas') return 'papas';
+    return 'todos';
+  };
 
-  // Item con cantidad (+/−)
+  const pType = product.productType || 'burger';
+
+  const burgerAdds = pType === 'burger'
+    ? availableAdditionals.filter(a =>
+        (a.category === 'hamburguesa' || a.category === 'adicional') &&
+        ['burger', 'todos'].includes(resolveAppliesTo(a))
+      )
+    : [];
+
+  const papasAdds = (pType === 'burger' || pType === 'papas')
+    ? availableAdditionals.filter(a =>
+        a.category === 'papas' &&
+        ['papas', 'todos'].includes(resolveAppliesTo(a))
+      )
+    : availableAdditionals.filter(a => a.category === 'papas'); // 'otro' → muestra todo
+
+  const salsaAdds = pType === 'papas'
+  ? []
+  : availableAdditionals.filter(a => a.category === 'salsa');
+
+  // ── Subcomponentes ─────────────────────────────────────────────────────────
   const AdditionalItem = ({ add }) => {
     const qty = selected[add._id] || 0;
     return (
@@ -115,7 +145,6 @@ function AdditionalsModal({ product, availableAdditionals, onConfirm, onClose })
     );
   };
 
-  // Item salsa — toggle sin cantidad
   const SalsaItem = ({ add }) => {
     const active = !!selected[add._id];
     return (
@@ -133,7 +162,6 @@ function AdditionalsModal({ product, availableAdditionals, onConfirm, onClose })
     );
   };
 
-  // Grupo colapsable
   const Group = ({ groupKey, emoji, label, children, count }) => {
     const isCollapsed = collapsed[groupKey];
     return (
@@ -178,6 +206,12 @@ function AdditionalsModal({ product, availableAdditionals, onConfirm, onClose })
           </Group>
         )}
 
+        {burgerAdds.length === 0 && papasAdds.length === 0 && salsaAdds.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: '#444', fontSize: '0.85rem' }}>
+            No hay adicionales disponibles para este producto.
+          </div>
+        )}
+
         <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16, marginTop: 16, display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: '#666', border: '1px solid rgba(255,255,255,0.08)', padding: '13px', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
           <button onClick={handleConfirm} style={{ flex: 2, background: '#E8B84B', color: '#000', border: 'none', padding: '13px', borderRadius: 10, fontWeight: 800, cursor: 'pointer', fontSize: '0.95rem' }}>
@@ -191,33 +225,33 @@ function AdditionalsModal({ product, availableAdditionals, onConfirm, onClose })
 
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function PublicOrder() {
-  const [menu, setMenu] = useState({});
+  const [menu, setMenu]                         = useState({});
   const [availableAdditionals, setAvailableAdditionals] = useState([]);
-  const [zones, setZones] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [cart, setCart] = useState([]);
-  const [step, setStep] = useState('menu');
-  const [loading, setLoading] = useState(true);
-  const [systemDown, setSystemDown] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(() => {
+  const [zones, setZones]                       = useState([]);
+  const [open, setOpen]                         = useState(false);
+  const [cart, setCart]                         = useState([]);
+  const [step, setStep]                         = useState('menu');
+  const [loading, setLoading]                   = useState(true);
+  const [systemDown, setSystemDown]             = useState(false);
+  const [showWelcome, setShowWelcome]           = useState(() => {
     try { return !localStorage.getItem('janz_visited'); } catch { return false; }
   });
-  const [limits, setLimits] = useState({ enabled: false, limitReached: false, dailyMax: 50, todayCount: 0 });
+  const [limits, setLimits]         = useState({ enabled: false, limitReached: false, dailyMax: 50, todayCount: 0 });
   const [businessWhatsapp, setBusinessWhatsapp] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [orderResult, setOrderResult] = useState(null);
-  const [orderStatus, setOrderStatus] = useState(null);
+  const [submitting, setSubmitting]             = useState(false);
+  const [orderResult, setOrderResult]           = useState(null);
+  const [orderStatus, setOrderStatus]           = useState(null);
   const [additionalsModal, setAdditionalsModal] = useState(null);
-  const [deliveryType, setDeliveryType] = useState('delivery');
-  const [selectedZone, setSelectedZone] = useState('');
-  const [deliveryCost, setDeliveryCost] = useState(0);
-  const [couponCode, setCouponCode] = useState('');
-  const [couponStatus, setCouponStatus] = useState(null);
+  const [deliveryType, setDeliveryType]         = useState('delivery');
+  const [selectedZone, setSelectedZone]         = useState('');
+  const [deliveryCost, setDeliveryCost]         = useState(0);
+  const [couponCode, setCouponCode]             = useState('');
+  const [couponStatus, setCouponStatus]         = useState(null);
   const [validatingCoupon, setValidatingCoupon] = useState(false);
-  const [transferAlias, setTransferAlias] = useState('');
+  const [transferAlias, setTransferAlias]       = useState('');
   const [notesPlaceholder, setNotesPlaceholder] = useState('Aclaraciones, alergias...');
-  const [paymentMethod, setPaymentMethod] = useState('');
-  const [client, setClient] = useState(() => {
+  const [paymentMethod, setPaymentMethod]       = useState('');
+  const [client, setClient]                     = useState(() => {
     try {
       const saved = localStorage.getItem('janz_client_data');
       if (saved) {
@@ -227,12 +261,12 @@ export default function PublicOrder() {
     } catch {}
     return { name: '', whatsapp: '', address: '', floor: '', references: '', notes: '' };
   });
-  const [scheduledFor, setScheduledFor] = useState('asap');
-  const [hourlyDiscount, setHourlyDiscount] = useState(null);
-  const [prodeEnabled, setProdeEnabled] = useState(false);
-  const [clientId, setClientId] = useState(null);
-  const [schedule, setSchedule] = useState({ openHour: 19, closeHour: 23 });
-  const [currentTime, setCurrentTime] = useState('');
+  const [scheduledFor, setScheduledFor]         = useState('asap');
+  const [hourlyDiscount, setHourlyDiscount]     = useState(null);
+  const [prodeEnabled, setProdeEnabled]         = useState(false);
+  const [clientId, setClientId]                 = useState(null);
+  const [schedule, setSchedule]                 = useState({ openHour: 19, closeHour: 23 });
+  const [currentTime, setCurrentTime]           = useState('');
   const [inDiscountWindow, setInDiscountWindow] = useState(false);
   const socketRef = useRef(null);
 
@@ -280,27 +314,50 @@ export default function PublicOrder() {
     return () => socket.disconnect();
   }, [step, orderResult?.orderNumber]);
 
+  // ── Cálculos de totales ────────────────────────────────────────────────────
+  const subtotalBruto = cart.reduce((s, i) => s + itemTotal(i), 0);
+
+  // Descuento: se aplica sobre el subtotal bruto (sin delivery)
+  const activeDiscountPercent = couponStatus?.valid
+    ? couponStatus.discountPercent
+    : (inDiscountWindow && hourlyDiscount?.enabled ? hourlyDiscount.discountPercent : 0);
+  const discount = activeDiscountPercent > 0 ? Math.round(subtotalBruto * activeDiscountPercent / 100) : 0;
+
+  // Total de productos ya con descuento aplicado
+  const subtotalConDescuento = subtotalBruto - discount;
+
+  // ── Costo de delivery ──────────────────────────────────────────────────────
+  // IMPORTANTE: el umbral de envío gratis (freeFrom) se compara contra el precio
+  // FINAL de los productos (ya descontado con cupón o descuento horario).
+  // Esto evita el bug donde un cliente con cupón recibía envío gratis
+  // aunque el total final fuera menor al mínimo, o pagaba envío aunque
+  // el precio descontado superara el umbral.
   useEffect(() => {
     if (!selectedZone || deliveryType !== 'delivery') { setDeliveryCost(0); return; }
     const zone = zones.find(z => z.id === selectedZone);
-    if (zone) {
-      const subtotal = cart.reduce((s, i) => s + itemTotal(i), 0);
-      setDeliveryCost(zone.freeFrom > 0 && subtotal >= zone.freeFrom ? 0 : zone.cost || 0);
-    }
-  }, [selectedZone, cart, deliveryType, zones]);
+    if (!zone) return;
 
-  const total = cart.reduce((s, i) => s + itemTotal(i), 0);
-  const activeDiscountPercent = couponStatus?.valid ? couponStatus.discountPercent : inDiscountWindow && hourlyDiscount?.enabled ? hourlyDiscount.discountPercent : 0;
-  const discount = activeDiscountPercent > 0 ? Math.round(total * activeDiscountPercent / 100) : 0;
-  const totalWithDiscount = total - discount + (deliveryType === 'delivery' ? deliveryCost : 0);
+    // Recalcular usando subtotal YA descontado
+    const subtotal = cart.reduce((s, i) => s + itemTotal(i), 0);
+    const disc = activeDiscountPercent > 0 ? Math.round(subtotal * activeDiscountPercent / 100) : 0;
+    const finalSubtotal = subtotal - disc;
 
+    const isFree = zone.freeFrom > 0 && finalSubtotal >= zone.freeFrom;
+    setDeliveryCost(isFree ? 0 : zone.cost || 0);
+  // eslint-disable-next-line
+  }, [selectedZone, cart, deliveryType, zones, couponStatus, inDiscountWindow, hourlyDiscount]);
+
+  const totalFinal = subtotalConDescuento + (deliveryType === 'delivery' ? deliveryCost : 0);
+
+  // ── Carrito ────────────────────────────────────────────────────────────────
   const handleAddToCart = (product) => {
     const existing = cart.find(i => i.product === product._id);
     if (existing) setCart(c => c.map(i => i.product === product._id ? { ...i, quantity: i.quantity + 1 } : i));
     else if (availableAdditionals.length > 0) { setAdditionalsModal(product); window.scrollTo({ top: 0, behavior: 'smooth' }); }
     else addProductToCart(product, []);
   };
-  const addProductToCart = (product, additionals) => setCart(c => [...c, { product: product._id, productName: product.name, variant: product.variant, quantity: 1, unitPrice: product.salePrice, additionals }]);
+  const addProductToCart = (product, additionals) =>
+    setCart(c => [...c, { product: product._id, productName: product.name, variant: product.variant, productType: product.productType || 'burger', quantity: 1, unitPrice: product.salePrice, additionals }]);
   const handleAdditionalsConfirm = (additionals) => { addProductToCart(additionalsModal, additionals); setAdditionalsModal(null); };
   const removeFromCart = (productId) => {
     const existing = cart.find(i => i.product === productId);
@@ -331,7 +388,10 @@ export default function PublicOrder() {
     setSubmitting(true);
     try {
       const res = await API.post('/public/order', {
-        client, items: cart.map(i => ({ product: i.product, quantity: i.quantity, additionals: (i.additionals || []).map(a => ({ additional: a.additional, quantity: a.quantity })) })),
+        client, items: cart.map(i => ({
+          product: i.product, quantity: i.quantity,
+          additionals: (i.additionals || []).map(a => ({ additional: a.additional, quantity: a.quantity }))
+        })),
         deliveryType, paymentMethod, notes: client.notes, zone: selectedZone,
         scheduledFor: scheduledFor === 'asap' ? null : scheduledFor, isScheduled: scheduledFor !== 'asap',
         deliveryAddress: deliveryType === 'delivery' ? [client.address, client.floor, client.references].filter(Boolean).join(' — ') : '',
@@ -397,6 +457,12 @@ export default function PublicOrder() {
           )}
           {orderResult?.discountAmount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 6 }}><span style={{ color: '#22c55e' }}>🎉 Descuento {orderResult.couponCode ? `(${orderResult.couponCode})` : ''}</span><span style={{ color: '#22c55e', fontWeight: 700 }}>-{fmt(orderResult.discountAmount)}</span></div>}
           {orderResult?.deliveryCost > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 6 }}><span style={{ color: '#555' }}>🛵 Delivery</span><span style={{ color: '#888' }}>{fmt(orderResult.deliveryCost)}</span></div>}
+          {orderResult?.deliveryCost === 0 && orderResult?.deliveryType === 'delivery' && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 6 }}>
+              <span style={{ color: '#22c55e' }}>🛵 Delivery</span>
+              <span style={{ color: '#22c55e', fontWeight: 700 }}>¡Gratis! 🎉</span>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 12, marginTop: 8 }}>
             <span style={{ fontWeight: 700, color: '#E8B84B', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total a pagar</span>
             <span style={{ fontSize: '1.6rem', fontWeight: 900, color: 'white', letterSpacing: '-0.5px' }}>{fmt(orderResult?.total)}</span>
@@ -414,6 +480,20 @@ export default function PublicOrder() {
       </div>
     </div>
   );
+
+  // ── Helpers para la sección de zonas ──────────────────────────────────────
+  // Obtiene el costo de delivery para una zona dado el precio final (ya descontado)
+  const getZoneCost = (zone) => {
+    const isFree = zone.freeFrom > 0 && subtotalConDescuento >= zone.freeFrom;
+    return isFree ? 0 : zone.cost || 0;
+  };
+
+  // Cuánto le falta al cliente para envío gratis en una zona dada
+  const amountLeftForFree = (zone) => {
+    if (!zone.freeFrom || zone.freeFrom === 0) return null;
+    const diff = zone.freeFrom - subtotalConDescuento;
+    return diff > 0 ? diff : null;
+  };
 
   return (
     <>
@@ -476,7 +556,7 @@ export default function PublicOrder() {
         }
       `}</style>
 
-      {/* Hero — responsive */}
+      {/* Hero */}
       <div className="janz-hero">
         <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${heroBurger})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'brightness(0.35)' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(8,8,8,0.2) 0%, rgba(8,8,8,0.55) 55%, #080808 100%)' }} />
@@ -499,7 +579,6 @@ export default function PublicOrder() {
               <span style={{ fontSize: '0.75rem', color: open ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{open ? '● Abierto' : '● Cerrado'}</span>
             </div>
           </div>
-          {/* Prode en desktop dentro del hero */}
           <div className="janz-hero-prode">
             {prodeEnabled && step === 'menu' && (
               <div style={{ background: 'rgba(232,184,75,0.08)', border: '1px solid rgba(232,184,75,0.25)', borderRadius: 14, padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -517,7 +596,6 @@ export default function PublicOrder() {
         </div>
       </div>
 
-      {/* Banner Prode — solo móvil, en desktop va dentro del hero */}
       {prodeEnabled && step === 'menu' && (
         <div className="janz-prode-mobile" style={{ padding: '12px 16px 0' }}>
           <div style={{ background: 'rgba(232,184,75,0.06)', border: '1px solid rgba(232,184,75,0.2)', borderRadius: 14, padding: '13px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -533,7 +611,14 @@ export default function PublicOrder() {
         </div>
       )}
 
-      {additionalsModal && <AdditionalsModal product={additionalsModal} availableAdditionals={availableAdditionals} onConfirm={handleAdditionalsConfirm} onClose={() => setAdditionalsModal(null)} />}
+      {additionalsModal && (
+        <AdditionalsModal
+          product={additionalsModal}
+          availableAdditionals={availableAdditionals}
+          onConfirm={handleAdditionalsConfirm}
+          onClose={() => setAdditionalsModal(null)}
+        />
+      )}
 
       {step === 'form' ? (
         <div style={{ maxWidth: 520, width: '100%', margin: '0 auto', padding: '20px 16px 100px' }}>
@@ -567,13 +652,25 @@ export default function PublicOrder() {
               <div style={{ marginBottom: 18 }}>
                 <div style={labelStyle}>Zona de delivery *</div>
                 {zones.map(zone => {
-                  const isFree = zone.freeFrom > 0 && total >= zone.freeFrom;
-                  const cost = isFree ? 0 : zone.cost;
+                  const cost   = getZoneCost(zone);
+                  const left   = amountLeftForFree(zone);
+                  const isFree = cost === 0 && zone.freeFrom > 0;
                   return (
-                    <button key={zone.id} onClick={() => setSelectedZone(zone.id)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '12px 14px', borderRadius: 10, marginBottom: 8, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.88rem', transition: 'all 0.2s', background: selectedZone === zone.id ? 'rgba(232,184,75,0.1)' : 'rgba(255,255,255,0.04)', color: selectedZone === zone.id ? '#E8B84B' : '#666', outline: selectedZone === zone.id ? '1.5px solid rgba(232,184,75,0.4)' : 'none' }}>
-                      <span>📍 {zone.name}</span>
-                      <span style={{ fontSize: '0.82rem', color: cost === 0 ? '#22c55e' : '#555' }}>{cost === 0 ? (isFree ? '¡Gratis! 🎉' : 'Gratis') : fmt(cost)}</span>
-                    </button>
+                    <div key={zone.id}>
+                      <button onClick={() => setSelectedZone(zone.id)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '12px 14px', borderRadius: 10, marginBottom: left ? 4 : 8, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.88rem', transition: 'all 0.2s', background: selectedZone === zone.id ? 'rgba(232,184,75,0.1)' : 'rgba(255,255,255,0.04)', color: selectedZone === zone.id ? '#E8B84B' : '#666', outline: selectedZone === zone.id ? '1.5px solid rgba(232,184,75,0.4)' : 'none' }}>
+                        <span>📍 {zone.name}</span>
+                        <span style={{ fontSize: '0.82rem', color: cost === 0 ? '#22c55e' : '#555' }}>
+                          {cost === 0 ? (isFree ? '¡Gratis! 🎉' : 'Gratis') : fmt(cost)}
+                        </span>
+                      </button>
+                      {/* Banner "te falta $X para envío gratis" */}
+                      {left !== null && selectedZone === zone.id && (
+                        <div style={{ marginBottom: 8, padding: '7px 14px', borderRadius: 8, background: 'rgba(232,184,75,0.05)', border: '1px solid rgba(232,184,75,0.15)', fontSize: '0.76rem', color: '#9a7d30', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>🛵</span>
+                          <span>Te faltan <strong style={{ color: '#E8B84B' }}>{fmt(left)}</strong> para envío gratis en esta zona</span>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -641,6 +738,7 @@ export default function PublicOrder() {
               {couponStatus && <div style={{ marginTop: 6, fontSize: '0.8rem', color: couponStatus.valid ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{couponStatus.valid ? '✅' : '❌'} {couponStatus.message}</div>}
             </div>
 
+            {/* Resumen del pedido */}
             <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 16, marginBottom: 20, border: '1px solid rgba(255,255,255,0.05)' }}>
               <div style={{ fontWeight: 700, marginBottom: 12, color: '#E8B84B', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Resumen del pedido</div>
               {cart.map((i, idx) => (
@@ -657,17 +755,36 @@ export default function PublicOrder() {
                 </div>
               ))}
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', marginTop: 10, paddingTop: 10 }}>
-                {deliveryCost > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 4, color: '#444' }}><span>Delivery</span><span>{fmt(deliveryCost)}</span></div>}
-                {discount > 0 && (<><div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 4, color: '#444' }}><span>Subtotal</span><span>{fmt(total)}</span></div><div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 6, color: '#22c55e' }}><span>{couponStatus?.valid ? `🎟️ Cupón ${couponStatus.discountPercent}%` : `🎉 Descuento ${activeDiscountPercent}%`}</span><span>- {fmt(discount)}</span></div></>)}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {/* Subtotal solo si hay descuento o delivery */}
+                {(discount > 0 || deliveryCost > 0) && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 4, color: '#444' }}>
+                    <span>Subtotal</span><span>{fmt(subtotalBruto)}</span>
+                  </div>
+                )}
+                {discount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 4, color: '#22c55e' }}>
+                    <span>{couponStatus?.valid ? `🎟️ Cupón ${couponStatus.discountPercent}%` : `🎉 Descuento ${activeDiscountPercent}%`}</span>
+                    <span>- {fmt(discount)}</span>
+                  </div>
+                )}
+                {/* Delivery — siempre mostrar cuando es delivery */}
+                {deliveryType === 'delivery' && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 4 }}>
+                    <span style={{ color: deliveryCost === 0 ? '#22c55e' : '#444' }}>🛵 Delivery</span>
+                    <span style={{ color: deliveryCost === 0 ? '#22c55e' : '#444', fontWeight: deliveryCost === 0 ? 700 : 400 }}>
+                      {deliveryCost === 0 ? '¡Gratis! 🎉' : fmt(deliveryCost)}
+                    </span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
                   <span style={{ fontWeight: 700, color: '#E8B84B', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total</span>
-                  <span style={{ color: 'white', fontSize: '1.3rem', fontWeight: 900, letterSpacing: '-0.5px' }}>{fmt(totalWithDiscount)}</span>
+                  <span style={{ color: 'white', fontSize: '1.3rem', fontWeight: 900, letterSpacing: '-0.5px' }}>{fmt(totalFinal)}</span>
                 </div>
               </div>
             </div>
 
             <button onClick={handleSubmit} disabled={submitting} style={{ width: '100%', background: submitting ? '#222' : '#E8B84B', color: submitting ? '#555' : '#000', border: 'none', padding: '15px', borderRadius: 12, fontWeight: 800, cursor: submitting ? 'not-allowed' : 'pointer', fontSize: '1rem', letterSpacing: '0.02em', transition: 'all 0.2s' }}>
-              {submitting ? 'Enviando...' : `Confirmar pedido — ${fmt(totalWithDiscount)}`}
+              {submitting ? 'Enviando...' : `Confirmar pedido — ${fmt(totalFinal)}`}
             </button>
           </div>
         </div>
@@ -693,7 +810,6 @@ export default function PublicOrder() {
                     <div className="janz-product-img-wrap">
                       {image ? <img src={image} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block', minHeight: '100%' }} /> : <div style={{ width: '100%', height: '100%', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40 }}>🍔</div>}
                     </div>
-                    {/* Info */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       <div style={{ padding: '14px 16px 6px' }}>
                         <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#E8B84B', lineHeight: 1, letterSpacing: '-0.3px' }}>{name}</div>
@@ -769,9 +885,15 @@ export default function PublicOrder() {
                           <div style={{ fontSize: '0.9rem', color: 'white', fontWeight: 600 }}>{fmt(itemTotal(item))}</div>
                         </div>
                       ))}
+                      {discount > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#22c55e', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <span>Descuento {activeDiscountPercent}%</span>
+                          <span>- {fmt(discount)}</span>
+                        </div>
+                      )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 14, marginTop: 4 }}>
                         <span style={{ fontWeight: 700, color: '#E8B84B', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total</span>
-                        <span style={{ fontSize: '1.4rem', fontWeight: 900, color: 'white', letterSpacing: '-0.5px' }}>{fmt(total)}</span>
+                        <span style={{ fontSize: '1.4rem', fontWeight: 900, color: 'white', letterSpacing: '-0.5px' }}>{fmt(subtotalConDescuento)}</span>
                       </div>
                       <button onClick={() => setStep('form')} style={{ width: '100%', background: '#E8B84B', color: '#000', border: 'none', padding: '13px', borderRadius: 10, fontWeight: 800, cursor: 'pointer', fontSize: '0.95rem', marginTop: 14 }}>
                         Confirmar pedido →
@@ -789,7 +911,7 @@ export default function PublicOrder() {
       {cart.length > 0 && step === 'menu' && (
         <div className="janz-cart-float" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 100 }}>
           <button onClick={() => setStep('form')} style={{ background: '#E8B84B', color: '#000', border: 'none', padding: '14px 28px', borderRadius: 100, fontWeight: 800, cursor: 'pointer', fontSize: '0.95rem', boxShadow: '0 8px 32px rgba(232,184,75,0.3)', whiteSpace: 'nowrap', letterSpacing: '-0.2px' }}>
-            🛒 Ver pedido ({cart.reduce((s, i) => s + i.quantity, 0)}) — {fmt(total)}
+            🛒 Ver pedido ({cart.reduce((s, i) => s + i.quantity, 0)}) — {fmt(subtotalConDescuento)}
           </button>
         </div>
       )}

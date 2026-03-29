@@ -7,9 +7,35 @@ const fmt = n => `$${Number(n || 0).toLocaleString('es-AR')}`;
 
 const CATEGORIES = [
   { key: 'hamburguesa', label: '🍔 Hamburguesa', desc: 'Medallón, cheddar (feta), panceta (feta), huevo frito...' },
-  { key: 'papas',       label: '🍟 Papas',       desc: 'Cheddar líquido, panceta picada...' },
-  { key: 'salsa',       label: '🫙 Salsas',      desc: 'Salsas y aderezos' },
+  { key: 'papas',       label: '🍟 Papas',        desc: 'Cheddar líquido, panceta picada...' },
+  { key: 'salsa',       label: '🫙 Salsas',        desc: 'Salsas y aderezos' },
 ];
+
+// Opciones de "aplica a" — controla en qué tipo de producto aparece al cliente
+const APPLIES_TO_OPTIONS = [
+  {
+    v: 'burger',
+    l: '🍔 Solo burger',
+    desc: 'Aparece al personalizar hamburguesas (no en papas solas)',
+  },
+  {
+    v: 'papas',
+    l: '🍟 Solo papas',
+    desc: 'Aparece al personalizar papas (no en hamburguesas)',
+  },
+  {
+    v: 'todos',
+    l: '🌐 Todos',
+    desc: 'Aparece en cualquier tipo de producto',
+  },
+];
+
+// Default de appliesTo según la categoría del tab activo
+function defaultAppliesTo(tab) {
+  if (tab === 'hamburguesa') return 'burger';
+  if (tab === 'papas') return 'papas';
+  return 'todos'; // salsas → aplica a todos por defecto
+}
 
 const EMOJI_SUGGESTIONS = {
   hamburguesa: ['🥩','🧀','🥓','🍳','🥚','🧅','🌶️','🍖','➕'],
@@ -17,7 +43,7 @@ const EMOJI_SUGGESTIONS = {
   salsa:       ['🫙','🌶️','🧄','🍅','🫒','🥫','💛','❤️','🤍'],
 };
 
-const EMPTY_FORM = { name: '', description: '', price: 0, emoji: '' };
+const EMPTY_FORM = { name: '', description: '', price: 0, emoji: '', appliesTo: 'burger' };
 
 export default function Additionals() {
   const [tab, setTab]             = useState('hamburguesa');
@@ -39,6 +65,11 @@ export default function Additionals() {
 
   useEffect(() => { fetchAll(); }, []);
 
+  // Cuando cambia el tab, resetear el appliesTo del form al default correcto
+  useEffect(() => {
+    setForm(f => ({ ...f, appliesTo: defaultAppliesTo(tab) }));
+  }, [tab]);
+
   const visible = items.filter(i => i.category === tab);
   const currentCat = CATEGORIES.find(c => c.key === tab);
 
@@ -46,11 +77,16 @@ export default function Additionals() {
     if (!form.name.trim()) return toast.error('El nombre es obligatorio');
     setSaving(true);
     try {
-      const payload = { ...form, category: tab, price: Number(form.price) || 0 };
+      const payload = {
+        ...form,
+        category: tab,
+        price: Number(form.price) || 0,
+        appliesTo: form.appliesTo || defaultAppliesTo(tab),
+      };
       const res = await API.post('/additionals', payload);
       setItems(prev => [...prev, res.data]);
       setShowModal(false);
-      setForm(EMPTY_FORM);
+      setForm({ ...EMPTY_FORM, appliesTo: defaultAppliesTo(tab) });
       toast.success('Adicional creado');
     } catch (e) {
       toast.error(e.response?.data?.message || 'Error al crear');
@@ -59,15 +95,24 @@ export default function Additionals() {
 
   const startEdit = (item) => {
     setEditItem(item._id);
-    setEditVals({ name: item.name, description: item.description || '', price: item.price, emoji: item.emoji || '' });
+    setEditVals({
+      name: item.name,
+      description: item.description || '',
+      price: item.price,
+      emoji: item.emoji || '',
+      appliesTo: item.appliesTo || defaultAppliesTo(item.category),
+    });
   };
 
   const handleSaveEdit = async (id) => {
     setSaving(true);
     try {
       const res = await API.put(`/additionals/${id}`, {
-        name: editVals.name, description: editVals.description,
-        price: Number(editVals.price) || 0, emoji: editVals.emoji,
+        name: editVals.name,
+        description: editVals.description,
+        price: Number(editVals.price) || 0,
+        emoji: editVals.emoji,
+        appliesTo: editVals.appliesTo,
       });
       setItems(prev => prev.map(i => i._id === id ? res.data : i));
       setEditItem(null);
@@ -85,13 +130,20 @@ export default function Additionals() {
     } catch { toast.error('Error al eliminar'); }
   };
 
+  // Label corto para mostrar en tabla
+  const appliesToLabel = (val) => {
+    if (val === 'burger') return '🍔 Solo burger';
+    if (val === 'papas')  return '🍟 Solo papas';
+    return '🌐 Todos';
+  };
+
   if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>;
 
   return (
     <>
       <div className="page-header">
         <h1>Adicionales</h1>
-        <button className="btn btn-primary" onClick={() => { setForm(EMPTY_FORM); setShowModal(true); }}>
+        <button className="btn btn-primary" onClick={() => { setForm({ ...EMPTY_FORM, appliesTo: defaultAppliesTo(tab) }); setShowModal(true); }}>
           <Plus size={16} /> Nuevo adicional
         </button>
       </div>
@@ -114,6 +166,9 @@ export default function Additionals() {
         {/* Descripción de la categoría */}
         <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(232,184,75,0.06)', border: '1px solid rgba(232,184,75,0.15)', borderRadius: 8, fontSize: '0.8rem', color: 'var(--gray-light)' }}>
           💡 {currentCat?.desc}
+          <span style={{ marginLeft: 12, color: 'var(--gray)', fontSize: '0.75rem' }}>
+            El campo <strong style={{ color: 'white' }}>Aplica a</strong> controla en qué tipos de producto el cliente puede elegir este adicional.
+          </span>
         </div>
 
         {/* Lista */}
@@ -121,7 +176,7 @@ export default function Additionals() {
           <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--gray)' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>{tab === 'hamburguesa' ? '🍔' : tab === 'papas' ? '🍟' : '🫙'}</div>
             <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.3rem', marginBottom: 8 }}>Sin adicionales en esta categoría</div>
-            <button className="btn btn-primary btn-sm" onClick={() => { setForm(EMPTY_FORM); setShowModal(true); }}>
+            <button className="btn btn-primary btn-sm" onClick={() => { setForm({ ...EMPTY_FORM, appliesTo: defaultAppliesTo(tab) }); setShowModal(true); }}>
               <Plus size={13} /> Agregar el primero
             </button>
           </div>
@@ -133,6 +188,7 @@ export default function Additionals() {
                   <th>Adicional</th>
                   <th>Descripción</th>
                   <th>Precio</th>
+                  <th>Aplica a</th>
                   <th></th>
                 </tr>
               </thead>
@@ -158,6 +214,12 @@ export default function Additionals() {
                             style={{ width: 100 }} />
                         </td>
                         <td>
+                          <select value={editVals.appliesTo} onChange={e => setEditVals(v => ({ ...v, appliesTo: e.target.value }))}
+                            style={{ background: '#1a1a1a', border: '1px solid var(--border)', borderRadius: 6, color: 'white', padding: '6px 10px', fontSize: '0.82rem' }}>
+                            {APPLIES_TO_OPTIONS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                          </select>
+                        </td>
+                        <td>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button className="btn-icon" onClick={() => handleSaveEdit(item._id)} disabled={saving}
                               style={{ color: 'var(--green)' }}><Check size={14} /></button>
@@ -172,6 +234,11 @@ export default function Additionals() {
                         </td>
                         <td style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>{item.description || '—'}</td>
                         <td style={{ color: 'var(--gold)', fontWeight: 700 }}>{fmt(item.price)}</td>
+                        <td>
+                          <span style={{ fontSize: '0.78rem', color: 'var(--gray-light)', background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: 6 }}>
+                            {appliesToLabel(item.appliesTo || defaultAppliesTo(item.category))}
+                          </span>
+                        </td>
                         <td>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button className="btn-icon" onClick={() => startEdit(item)}><Pencil size={13} /></button>
@@ -221,6 +288,28 @@ export default function Additionals() {
               <div className="form-group">
                 <label>Precio</label>
                 <input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
+              </div>
+
+              {/* Aplica a */}
+              <div className="form-group">
+                <label>¿En qué productos aparece esta opción al cliente?</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                  {APPLIES_TO_OPTIONS.map(opt => (
+                    <button key={opt.v} type="button" onClick={() => setForm(f => ({ ...f, appliesTo: opt.v }))}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 12, textAlign: 'left',
+                        padding: '10px 14px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                        background: form.appliesTo === opt.v ? 'rgba(232,184,75,0.1)' : 'rgba(255,255,255,0.03)',
+                        outline: form.appliesTo === opt.v ? '1.5px solid rgba(232,184,75,0.4)' : '1px solid var(--border)',
+                      }}>
+                      <div style={{ fontSize: '1.1rem', marginTop: 1 }}>{opt.v === 'burger' ? '🍔' : opt.v === 'papas' ? '🍟' : '🌐'}</div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.88rem', color: form.appliesTo === opt.v ? '#E8B84B' : 'white' }}>{opt.l}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--gray)', marginTop: 2 }}>{opt.desc}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="modal-footer">

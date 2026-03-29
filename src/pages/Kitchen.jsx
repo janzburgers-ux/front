@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Clock, ChefHat, Wifi, WifiOff, Flame, AlertTriangle } from 'lucide-react';
+import { Clock, ChefHat, Wifi, WifiOff } from 'lucide-react';
 import API from '../utils/api';
 import toast from 'react-hot-toast';
 import { io } from 'socket.io-client';
@@ -20,16 +20,27 @@ const TARGET_MINUTES = 30;
 
 // Formatea hora en AR
 function fmtHora(date) {
-  return new Date(date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' });
+  return new Date(date).toLocaleTimeString('es-AR', {
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'America/Argentina/Buenos_Aires'
+  });
 }
 
 // Calcula readyAt y deliveryAt a partir de los datos del pedido
 function calcDeadlines(order) {
   const confirmedMins = order.confirmedMinutes || order.estimatedMinutes || TARGET_MINUTES;
-  const deliveryMins = order.deliveryMinutes || 15;
-  const cookMins = confirmedMins - deliveryMins;
-  const base = new Date(order.receivedAt || order.createdAt);
-  const readyAt = new Date(base.getTime() + cookMins * 60000);
+  const deliveryMins  = order.deliveryMinutes || 15;
+  const cookMins      = confirmedMins - deliveryMins;
+
+  // Para pedidos programados: trabajar hacia atrás desde scheduledFor
+  if (order.isScheduled && order.scheduledFor) {
+    const deliveryAt = new Date(order.scheduledFor);
+    const readyAt    = new Date(deliveryAt.getTime() - deliveryMins * 60000);
+    return { readyAt, deliveryAt, cookMins, deliveryMins };
+  }
+
+  const base       = new Date(order.receivedAt || order.createdAt);
+  const readyAt    = new Date(base.getTime() + cookMins * 60000);
   const deliveryAt = new Date(base.getTime() + confirmedMins * 60000);
   return { readyAt, deliveryAt, cookMins, deliveryMins };
 }
@@ -45,21 +56,27 @@ function CountdownDisplay({ order }) {
   }, [readyAtMs]);
 
   const absSeconds = Math.abs(secsLeft);
-  const mins = Math.floor(absSeconds / 60);
-  const secs = absSeconds % 60;
-  const overdue = secsLeft < 0;
-  const urgent = !overdue && secsLeft < 10 * 60;
-  const warning = !overdue && !urgent && secsLeft < 20 * 60;
+  const hours = Math.floor(absSeconds / 3600);
+  const mins  = Math.floor((absSeconds % 3600) / 60);
+  const secs  = absSeconds % 60;
+
+  const overdue  = secsLeft < 0;
+  const urgent   = !overdue && secsLeft < 10 * 60;
+  const warning  = !overdue && !urgent && secsLeft < 20 * 60;
 
   const color = overdue ? '#f04444' : urgent ? '#f04444' : warning ? '#eab308' : '#22c55e';
-  const bg = overdue ? 'rgba(240,68,68,0.12)' : urgent ? 'rgba(240,68,68,0.08)' : warning ? 'rgba(234,179,8,0.08)' : 'rgba(34,197,94,0.06)';
+  const bg    = overdue ? 'rgba(240,68,68,0.12)' : urgent ? 'rgba(240,68,68,0.08)' : warning ? 'rgba(234,179,8,0.08)' : 'rgba(34,197,94,0.06)';
   const label = overdue ? 'Demorado' : urgent ? 'Muy urgente' : warning ? 'Atención' : 'En tiempo';
+
+  const timeStr = hours > 0
+    ? `${hours}h ${String(mins).padStart(2, '0')}m`
+    : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 
   return (
     <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: bg, display: 'flex', alignItems: 'center', gap: 12 }}>
       <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
       <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1.3rem', color, minWidth: 58 }}>
-        {overdue ? '-' : ''}{String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
+        {overdue ? '-' : ''}{timeStr}
       </div>
       <div style={{ fontSize: '0.72rem', lineHeight: 1.5 }}>
         <div style={{ fontWeight: 700, color }}>{label}</div>
@@ -104,17 +121,58 @@ function TimerDisplay({ startDate }) {
   );
 }
 
+// ── Badge de horario programado ────────────────────────────────────────────────
+function ScheduleBadge({ order }) {
+  if (!order.isScheduled || !order.scheduledFor) {
+    return (
+      <div style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '4px 10px', borderRadius: 8,
+        background: 'rgba(34,197,94,0.08)',
+        border: '1px solid rgba(34,197,94,0.2)',
+        fontSize: '0.72rem', fontWeight: 700, color: '#22c55e',
+      }}>
+        🚀 Lo antes posible
+      </div>
+    );
+  }
+
+  let horaStr = order.scheduledFor;
+  if (typeof horaStr !== 'string' || horaStr.length > 5) {
+    try {
+      horaStr = new Date(horaStr).toLocaleTimeString('es-AR', {
+        hour: '2-digit', minute: '2-digit',
+        timeZone: 'America/Argentina/Buenos_Aires',
+      });
+    } catch {
+      horaStr = order.scheduledFor;
+    }
+  }
+
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      padding: '4px 10px', borderRadius: 8,
+      background: 'rgba(232,184,75,0.1)',
+      border: '1px solid rgba(232,184,75,0.35)',
+      fontSize: '0.72rem', fontWeight: 700, color: '#E8B84B',
+    }}>
+      🕐 Programado — {horaStr}hs
+    </div>
+  );
+}
+
 function OrderCard({ order, onStatusChange }) {
-  const [loading, setLoading] = useState(false);
-  const [deliveryType, setDeliveryType] = useState(order.deliveryType || 'delivery');
+  const [loading, setLoading]               = useState(false);
+  const [deliveryType, setDeliveryType]     = useState(order.deliveryType || 'delivery');
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmedMinutes, setConfirmedMinutes] = useState(order.estimatedMinutes || 20);
-  const [showTicket, setShowTicket] = useState(false);
-  const [cancelReason, setCancelReason] = useState('sin_stock');
-  const [cancelNotes, setCancelNotes] = useState('');
+  const [showTicket, setShowTicket]         = useState(false);
+  const [cancelReason, setCancelReason]     = useState('sin_stock');
+  const [cancelNotes, setCancelNotes]       = useState('');
   const flow = STATUS_FLOW[order.status];
-  const fmt = n => `$${Number(n || 0).toLocaleString('es-AR')}`;
+  const fmt  = n => `$${Number(n || 0).toLocaleString('es-AR')}`;
 
   const handleDeliveryTypeChange = async (newType) => {
     setDeliveryType(newType);
@@ -124,9 +182,13 @@ function OrderCard({ order, onStatusChange }) {
 
   const handleChange = async () => {
     if (!flow) return;
-    // Si va a confirmar, mostrar modal de tiempo primero
     if (flow.next === 'confirmed') {
-      setConfirmedMinutes(order.estimatedMinutes || 20);
+      if (order.isScheduled && order.scheduledFor) {
+        const minsUntil = Math.round((new Date(order.scheduledFor) - Date.now()) / 60000);
+        setConfirmedMinutes(Math.max(minsUntil, 10));
+      } else {
+        setConfirmedMinutes(order.estimatedMinutes || 20);
+      }
       setShowConfirmModal(true);
       return;
     }
@@ -180,6 +242,9 @@ function OrderCard({ order, onStatusChange }) {
               <div style={{ fontFamily: 'Bebas Neue', fontSize: '2.5rem', color: 'var(--gold)' }}>{order.publicCode || order.orderNumber}</div>
               <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{order.client?.name}</div>
               <div style={{ color: 'var(--gray)', fontSize: '0.78rem' }}>{order.deliveryType === 'delivery' ? '🛵 Delivery' : '🥡 Take Away'}</div>
+              <div style={{ marginTop: 8 }}>
+                <ScheduleBadge order={order} />
+              </div>
             </div>
             <div style={{ borderTop: '1px dashed rgba(255,255,255,0.2)', borderBottom: '1px dashed rgba(255,255,255,0.2)', padding: '14px 0', marginBottom: 14 }}>
               {order.items?.map((item, i) => (
@@ -226,7 +291,7 @@ function OrderCard({ order, onStatusChange }) {
       {/* Card principal */}
       <div className={`kitchen-card ${order.status}`}>
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
           <div>
             <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.5rem', color: 'var(--gold)', lineHeight: 1 }}>
               {order.publicCode || order.orderNumber}
@@ -242,6 +307,11 @@ function OrderCard({ order, onStatusChange }) {
               <TimerDisplay startDate={order.receivedAt || order.createdAt} />
             </div>
           </div>
+        </div>
+
+        {/* Badge horario */}
+        <div style={{ marginBottom: 10 }}>
+          <ScheduleBadge order={order} />
         </div>
 
         {/* Delivery type */}
@@ -306,7 +376,7 @@ function OrderCard({ order, onStatusChange }) {
         <CountdownDisplay order={order} />
 
         {/* Acción */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
           <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>
             {order.paymentMethod === 'efectivo' ? '💵 Efectivo' : '🏦 Transferencia'}
             {order.deliveryType === 'delivery' && (
@@ -344,15 +414,15 @@ function OrderCard({ order, onStatusChange }) {
               onClick={e => e.stopPropagation()}>
               <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.5rem', color: 'var(--gold)', marginBottom: 4 }}>⏱️ Confirmar tiempo</div>
               <div style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: 20 }}>
-                El sistema estimó{' '}
-                <strong style={{ color: 'var(--gold)' }}>{order.estimatedMinutes || 20} min</strong>.
-                {' '}Ajustá si hace falta — el cliente recibe este tiempo por WhatsApp.
+                {order.isScheduled && order.scheduledFor
+                  ? <>Pedido programado. Pre-cargado con el tiempo hasta la entrega. Ajustá si hace falta.</>
+                  : <>El sistema estimó <strong style={{ color: 'var(--gold)' }}>{order.estimatedMinutes || 20} min</strong>. Ajustá si hace falta — el cliente recibe este tiempo por WhatsApp.</>
+                }
               </div>
               <div style={{ marginBottom: 20 }}>
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-light)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>
                   Tiempo estimado (minutos)
                 </label>
-                {/* Botones rápidos */}
                 <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                   {[15, 20, 25, 30, 40, 45].map(m => (
                     <button key={m} onClick={() => setConfirmedMinutes(m)}
@@ -424,11 +494,10 @@ function OrderCard({ order, onStatusChange }) {
 
 // ── Página principal de Cocina ────────────────────────────────────────────────
 export default function Kitchen() {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders]       = useState([]);
+  const [loading, setLoading]     = useState(true);
   const [connected, setConnected] = useState(false);
   const socketRef = useRef(null);
-  const audioRef = useRef(null);
 
   function playSound() {
     try {
@@ -436,16 +505,14 @@ export default function Kitchen() {
       const beep = (freq, startTime, duration) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
+        osc.connect(gain); gain.connect(ctx.destination);
         osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, startTime);
         gain.gain.setValueAtTime(0.4, startTime);
         gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-        osc.start(startTime);
-        osc.stop(startTime + duration);
+        osc.start(startTime); osc.stop(startTime + duration);
       };
-      beep(880, ctx.currentTime, 0.15);
+      beep(880,  ctx.currentTime,       0.15);
       beep(1100, ctx.currentTime + 0.2, 0.15);
       beep(1320, ctx.currentTime + 0.4, 0.25);
     } catch {}
@@ -462,7 +529,7 @@ export default function Kitchen() {
     const apiUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5000';
     const socket = io(apiUrl, { transports: ['websocket', 'polling'] });
     socketRef.current = socket;
-    socket.on('connect', () => { setConnected(true); });
+    socket.on('connect',    () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
     socket.on('new_order', (order) => {
       setOrders(prev => {
@@ -490,11 +557,13 @@ export default function Kitchen() {
     }
   };
 
-  // Ordenar por urgencia: el que tiene menos tiempo restante hasta readyAt va primero
   const sortByUrgency = (orders) => [...orders].sort((a, b) => {
     const getReadyAt = (o) => {
       const confirmedMins = o.confirmedMinutes || o.estimatedMinutes || 30;
-      const deliveryMins = o.deliveryMinutes || 15;
+      const deliveryMins  = o.deliveryMinutes || 15;
+      if (o.isScheduled && o.scheduledFor) {
+        return new Date(o.scheduledFor).getTime() - deliveryMins * 60000;
+      }
       const cookMins = confirmedMins - deliveryMins;
       return new Date(o.receivedAt || o.createdAt).getTime() + cookMins * 60000;
     };
@@ -505,14 +574,14 @@ export default function Kitchen() {
     pending:   sortByUrgency(orders.filter(o => o.status === 'pending')),
     confirmed: sortByUrgency(orders.filter(o => o.status === 'confirmed')),
     preparing: sortByUrgency(orders.filter(o => o.status === 'preparing')),
-    ready:     orders.filter(o => o.status === 'ready')
+    ready:     orders.filter(o => o.status === 'ready'),
   };
 
   const colConfig = [
     { key: 'pending',   label: 'Pendientes',  icon: '🕐', color: '#f59e0b' },
     { key: 'confirmed', label: 'Confirmados', icon: '✅', color: '#22c55e' },
     { key: 'preparing', label: 'En Cocina',   icon: '🔥', color: 'var(--gold)' },
-    { key: 'ready',     label: 'Listos',      icon: '🔔', color: '#818cf8' }
+    { key: 'ready',     label: 'Listos',      icon: '🔔', color: '#818cf8' },
   ];
 
   const [activeTab, setActiveTab] = useState('pending');

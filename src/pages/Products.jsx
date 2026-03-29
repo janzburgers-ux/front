@@ -16,6 +16,7 @@ function NewProductWizard({ ingredients, config, onClose, onSaved }) {
   const [imageUrl, setImageUrl] = useState('');
   const [recipeRows, setRecipeRows] = useState([{ ingredient: '', quantity: '', unit: 'g' }]);
   const [prices, setPrices] = useState({ Simple: '', Doble: '', Triple: '' });
+  const [productType, setProductType] = useState('burger');
   const [saving, setSaving] = useState(false);
   const fileRef = useRef();
 
@@ -84,7 +85,8 @@ function NewProductWizard({ ingredients, config, onClose, onSaved }) {
           salePrice: Number(prices[variant]),
           recipe: recipeRes.data._id,
           description: description.trim(),
-          image: imageUrl || ''
+          image: imageUrl || '',
+          productType
         });
       }
 
@@ -129,6 +131,20 @@ function NewProductWizard({ ingredients, config, onClose, onSaved }) {
                 <textarea value={description} onChange={e => setDescription(e.target.value)}
                   placeholder="Ej: Doble medallón, cheddar fundido, panceta crocante y cebolla caramelizada..."
                   rows={3} style={{ width: '100%', background: '#1a1a1a', border: '1px solid var(--border)', borderRadius: 8, color: 'white', padding: '10px 14px', resize: 'vertical', fontFamily: 'inherit', fontSize: '0.875rem' }} />
+              </div>
+              <div className="form-group">
+                <label>Tipo de producto</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[{v:'burger',l:'🍔 Hamburguesa'},{v:'papas',l:'🍟 Papas'},{v:'otro',l:'📦 Otro'}].map(opt => (
+                    <button key={opt.v} type="button" onClick={() => setProductType(opt.v)}
+                      className={`btn btn-sm ${productType === opt.v ? 'btn-primary' : 'btn-secondary'}`}>
+                      {opt.l}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4 }}>
+                  Define qué adicionales se muestran al cliente al personalizarlo.
+                </div>
               </div>
               <div className="form-group">
                 <label>Foto (opcional)</label>
@@ -295,6 +311,7 @@ function EditProductModal({ product, ingredients, config, onClose, onSaved }) {
       : [{ ingredient: '', quantity: '', unit: 'g' }]
   );
   const [salePrice, setSalePrice] = useState(product.salePrice || '');
+  const [productType, setProductType] = useState(product.productType || 'burger');
   const [saving, setSaving] = useState(false);
   const fileRef = useRef();
 
@@ -353,7 +370,8 @@ function EditProductModal({ product, ingredients, config, onClose, onSaved }) {
       await API.put(`/products/${product._id}`, {
         salePrice: Number(salePrice),
         description: description.trim(),
-        image: imageUrl || product.image || ''
+        image: imageUrl || product.image || '',
+        productType
       });
 
       // Actualizar también el resto de variantes con descripción e imagen
@@ -407,6 +425,22 @@ function EditProductModal({ product, ingredients, config, onClose, onSaved }) {
             <textarea value={description} onChange={e => setDescription(e.target.value)}
               placeholder="Describí esta hamburguesa..."
               rows={3} style={{ width: '100%', background: '#1a1a1a', border: '1px solid var(--border)', borderRadius: 8, color: 'white', padding: '10px 14px', resize: 'vertical', fontFamily: 'inherit', fontSize: '0.875rem', boxSizing: 'border-box' }} />
+          </div>
+
+          {/* Tipo de producto */}
+          <div className="form-group">
+            <label>Tipo de producto</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[{v:'burger',l:'🍔 Hamburguesa'},{v:'papas',l:'🍟 Papas'},{v:'otro',l:'📦 Otro'}].map(opt => (
+                <button key={opt.v} type="button" onClick={() => setProductType(opt.v)}
+                  className={`btn btn-sm ${productType === opt.v ? 'btn-primary' : 'btn-secondary'}`}>
+                  {opt.l}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4 }}>
+              Define qué adicionales se muestran al cliente al personalizar este producto.
+            </div>
           </div>
 
           {/* Receta */}
@@ -521,6 +555,15 @@ export default function Products() {
       setProducts(prev => prev.map(p => p._id === product._id ? { ...p, available: !p.available } : p));
       toast.success(product.available ? `${product.name} → No disponible` : `${product.name} → Disponible`);
     } catch { toast.error('Error'); }
+  };
+
+  const deleteProduct = async (product) => {
+    if (!window.confirm(`¿Eliminar "${product.name} ${product.variant}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      await API.delete(`/products/${product._id}`);
+      setProducts(prev => prev.filter(p => p._id !== product._id));
+      toast.success(`${product.name} ${product.variant} eliminado`);
+    } catch { toast.error('Error al eliminar producto'); }
   };
 
   const saveConfig = async () => {
@@ -650,6 +693,9 @@ export default function Products() {
                                   {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                                 </button>
                               )}
+                              <button className="btn-icon" onClick={() => deleteProduct(p)} style={{ color: 'var(--red)' }} title="Eliminar producto">
+                                <Trash2 size={14} />
+                              </button>
                             </div>
                           </td>
                         </tr>
