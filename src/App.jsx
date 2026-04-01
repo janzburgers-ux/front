@@ -28,6 +28,7 @@ import Expenses from './pages/Expenses';
 import RecipeEditor from './pages/RecipeEditor';
 import Prode from './pages/Prode';
 import PublicProde from './pages/PublicProde';
+import AdminOrder from './pages/AdminOrder';
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth();
@@ -74,6 +75,7 @@ function AppRoutes() {
         <Route path="gastos" element={<ProtectedRoute adminOnly><Expenses /></ProtectedRoute>} />
         <Route path="recetas" element={<ProtectedRoute adminOnly><RecipeEditor /></ProtectedRoute>} />
         <Route path="prode" element={<ProtectedRoute adminOnly><Prode /></ProtectedRoute>} />
+        <Route path="tomar-pedido" element={<ProtectedRoute adminOnly><AdminOrder /></ProtectedRoute>} />
       </Route>
 
       {/* Cualquier ruta desconocida va a pedido */}

@@ -1,27 +1,28 @@
 import { useState, useEffect } from 'react';
-import { Ticket, Plus, Gift, TrendingUp, Star } from 'lucide-react';
+import { Ticket, Plus, Gift, TrendingUp, Star, Tag } from 'lucide-react';
 import API from '../utils/api';
 import toast from 'react-hot-toast';
 
 const fmt = n => `$${Number(n || 0).toLocaleString('es-AR')}`;
 
 export default function Coupons() {
-  const [coupons, setCoupons] = useState([]);
-  const [clients, setClients] = useState([]);
-  const [stats, setStats] = useState(null);
+  const [coupons, setCoupons]         = useState([]);
+  const [clients, setClients]         = useState([]);
+  const [products, setProducts]       = useState([]);
+  const [stats, setStats]             = useState(null);
   const [nearThreshold, setNearThreshold] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('coupons');
-  const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading]         = useState(true);
+  const [tab, setTab]                 = useState('coupons');
+  const [showModal, setShowModal]     = useState(false);
   const [selectedCoupon, setSelectedCoupon] = useState(null);
-  const [form, setForm] = useState({ code: '', ownerId: '', discountForUser: 10, rewardPerUse: 5 });
+  const [form, setForm]               = useState({ code: '', ownerId: '', discountForUser: 10, rewardPerUse: 5, applicableProduct: '', expiresAt: '' });
   const [loyaltyConfig, setLoyaltyConfig] = useState(null);
-  const [awardModal, setAwardModal] = useState(null);
+  const [awardModal, setAwardModal]   = useState(null);
   const [awardPoints, setAwardPoints] = useState('');
   const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminForm, setAdminForm] = useState({ code: '', discountForUser: 0, label: 'Admin' });
+  const [adminForm, setAdminForm]     = useState({ code: '', discountForUser: 0, label: 'Admin', applicableProduct: '', applicableProductName: '', expiresAt: '' });
   const [showSingleModal, setShowSingleModal] = useState(false);
-  const [singleForm, setSingleForm] = useState({ code: '', discountForUser: 10, label: 'Promo' });
+  const [singleForm, setSingleForm]   = useState({ code: '', discountForUser: 10, label: 'Promo', applicableProduct: '', applicableProductName: '', expiresAt: '' });
 
   useEffect(() => {
     Promise.all([
@@ -29,35 +30,59 @@ export default function Coupons() {
       API.get('/clients'),
       API.get('/coupons/stats').catch(() => null),
       API.get('/coupons/loyalty/near-threshold').catch(() => ({ data: [] })),
-      API.get('/config').catch(() => null)
-    ]).then(([c, cl, st, nt, cfg]) => {
+      API.get('/config').catch(() => null),
+      API.get('/public/menu').catch(() => null)
+    ]).then(([c, cl, st, nt, cfg, menu]) => {
       setCoupons(c.data);
       setClients(cl.data);
       if (st) setStats(st.data);
       setNearThreshold(nt.data || []);
       if (cfg) setLoyaltyConfig(cfg.data?.loyalty);
+      // Flatten products from menu
+      if (menu?.data?.menu) {
+        const prods = [];
+        Object.entries(menu.data.menu).forEach(([, variants]) => variants.forEach(v => prods.push(v)));
+        setProducts(prods);
+      }
     }).finally(() => setLoading(false));
   }, []);
+
+  const getProductName = (productId) => {
+    if (!productId) return null;
+    const p = products.find(p => p._id === productId);
+    return p ? `${p.name} ${p.variant}` : null;
+  };
 
   const handleCreate = async () => {
     if (!form.code || !form.ownerId) { toast.error('Código y cliente son obligatorios'); return; }
     try {
-      const res = await API.post('/coupons', form);
+      const payload = {
+        ...form,
+        applicableProduct: form.applicableProduct || null,
+        applicableProductName: form.applicableProduct ? getProductName(form.applicableProduct) : null,
+        expiresAt: form.expiresAt || null
+      };
+      const res = await API.post('/coupons', payload);
       setCoupons(prev => [res.data, ...prev]);
       setShowModal(false);
-      setForm({ code: '', ownerId: '', discountForUser: 10, rewardPerUse: 5 });
+      setForm({ code: '', ownerId: '', discountForUser: 10, rewardPerUse: 5, applicableProduct: '', expiresAt: '' });
       toast.success('Cupón creado');
     } catch (e) { toast.error(e.response?.data?.message || 'Error al crear cupón'); }
   };
 
-
   const handleCreateAdmin = async () => {
     if (!adminForm.code) { toast.error('Código requerido'); return; }
     try {
-      const res = await API.post('/coupons/admin', adminForm);
+      const payload = {
+        ...adminForm,
+        applicableProduct: adminForm.applicableProduct || null,
+        applicableProductName: adminForm.applicableProduct ? getProductName(adminForm.applicableProduct) : null,
+        expiresAt: adminForm.expiresAt || null
+      };
+      const res = await API.post('/coupons/admin', payload);
       setCoupons(prev => [res.data, ...prev]);
       setShowAdminModal(false);
-      setAdminForm({ code: '', discountForUser: 0, label: 'Admin' });
+      setAdminForm({ code: '', discountForUser: 0, label: 'Admin', applicableProduct: '', expiresAt: '' });
       toast.success('Cupón admin creado');
     } catch (e) { toast.error(e.response?.data?.message || 'Error al crear cupón'); }
   };
@@ -65,10 +90,16 @@ export default function Coupons() {
   const handleCreateSingle = async () => {
     if (!singleForm.code) { toast.error('Código requerido'); return; }
     try {
-      const res = await API.post('/coupons/single-use', singleForm);
+      const payload = {
+        ...singleForm,
+        applicableProduct: singleForm.applicableProduct || null,
+        applicableProductName: singleForm.applicableProduct ? getProductName(singleForm.applicableProduct) : null,
+        expiresAt: singleForm.expiresAt || null
+      };
+      const res = await API.post('/coupons/single-use', payload);
       setCoupons(prev => [res.data, ...prev]);
       setShowSingleModal(false);
-      setSingleForm({ code: '', discountForUser: 10, label: 'Promo' });
+      setSingleForm({ code: '', discountForUser: 10, label: 'Promo', applicableProduct: '', expiresAt: '' });
       toast.success('Cupón de uso único creado');
     } catch (e) { toast.error(e.response?.data?.message || 'Error al crear cupón'); }
   };
@@ -82,7 +113,7 @@ export default function Coupons() {
   };
 
   const handleDelete = async (coupon) => {
-    if (!window.confirm(`¿Eliminar el cupón "${coupon.code}" definitivamente? Esta acción no se puede deshacer.`)) return;
+    if (!window.confirm(`¿Eliminar el cupón "${coupon.code}" definitivamente?`)) return;
     try {
       await API.delete(`/coupons/${coupon._id}`);
       setCoupons(prev => prev.filter(c => c._id !== coupon._id));
@@ -99,223 +130,181 @@ export default function Coupons() {
   };
 
   const handleAwardPoints = async () => {
-    if (!awardPoints || Number(awardPoints) <= 0) { toast.error('Ingresá una cantidad válida'); return; }
+    if (!awardPoints || isNaN(awardPoints)) { toast.error('Ingresá una cantidad válida'); return; }
     try {
       await API.post('/coupons/loyalty/award', { clientId: awardModal._id, points: Number(awardPoints) });
       toast.success(`${awardPoints} puntos acreditados a ${awardModal.name}`);
+      setNearThreshold(prev => prev.map(c => c._id === awardModal._id ? { ...c, loyaltyPoints: (c.loyaltyPoints || 0) + Number(awardPoints) } : c));
       setAwardModal(null);
-      setAwardPoints('');
-      const nt = await API.get('/coupons/loyalty/near-threshold');
-      setNearThreshold(nt.data || []);
     } catch { toast.error('Error al acreditar puntos'); }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>;
+  // Componente selector de producto
+  const ProductSelector = ({ value, onChange, placeholder = 'Todo el pedido (sin restricción)' }) => (
+    <select value={value} onChange={e => onChange(e.target.value)} className="form-select">
+      <option value="">{placeholder}</option>
+      {products.map(p => (
+        <option key={p._id} value={p._id}>{p.name} {p.variant} — {fmt(p.salePrice)}</option>
+      ))}
+    </select>
+  );
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center' }}><div className="spinner"/></div>;
+
+  const typeLabel = (c) => {
+    if (c.type === 'product') return { label: 'Producto', color: '#818cf8' };
+    if (c.type === 'admin')   return { label: 'Admin', color: '#6366f1' };
+    if (c.type === 'loyalty') return { label: 'Fidelización', color: '#f59e0b' };
+    return { label: 'Referido', color: '#22c55e' };
+  };
 
   return (
     <>
       <div className="page-header">
-        <h1><Ticket size={22} style={{ display: 'inline', marginRight: 10 }} />Cuponera</h1>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-secondary" onClick={() => setShowAdminModal(true)}>
-            🔑 Cupón Admin
-          </button>
-          <button className="btn btn-secondary" onClick={() => setShowSingleModal(true)}>
-            🎟️ Uso Único
-          </button>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-            <Plus size={16}/> Nuevo Cupón
-          </button>
-        </div>
+        <h1>🎟️ Cupones & Fidelización</h1>
       </div>
 
       <div className="page-body">
 
         {/* Stats */}
         {stats && (
-          <div className="stat-grid" style={{ marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
             {[
-              { label: 'Cupones activos',    value: stats.activeCoupons,                       color: 'var(--green)' },
-              { label: 'Usos totales',       value: stats.totalUses,                           color: 'var(--white)' },
-              { label: 'Descuento otorgado', value: fmt(stats.totalDiscountAmount),            color: 'var(--red)'   },
-              { label: 'Pedidos con cupón',  value: stats.ordersWithCoupon,                    color: 'var(--gold)'  },
+              { label: 'Cupones activos', value: stats.activeCoupons, icon: '🎟️' },
+              { label: 'Usos totales', value: stats.totalUses, icon: '✅' },
+              { label: 'Descuento total dado', value: fmt(stats.totalDiscountAmount), icon: '💸' },
+              { label: 'Recompensas pendientes', value: `${stats.pendingRewards}%`, icon: '🎁' }
             ].map(s => (
-              <div key={s.label} className="stat-card">
-                <div className="stat-label">{s.label}</div>
-                <div className="stat-value" style={{ fontSize: '1.6rem', color: s.color }}>{s.value}</div>
+              <div key={s.label} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ fontSize: '1.2rem', marginBottom: 4 }}>{s.icon}</div>
+                <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.4rem', color: 'var(--gold)' }}>{s.value}</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Descuento mensual */}
-        {stats?.monthlyDiscount?.length > 0 && (
-          <div className="card" style={{ marginBottom: 24, padding: '16px 20px' }}>
-            <div className="section-title" style={{ marginBottom: 14 }}>💸 Costo de cupones por mes</div>
-            <div style={{ display: 'flex', gap: 12 }}>
-              {stats.monthlyDiscount.map((m, i) => (
-                <div key={i} style={{ flex: 1, background: 'var(--dark)', borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{m.label}</div>
-                  <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.4rem', color: m.discount > 0 ? 'var(--red)' : 'var(--gray)', lineHeight: 1 }}>
-                    -{fmt(m.discount)}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4 }}>{m.orders} pedidos con cupón</div>
-                  {m.revenue > 0 && (
-                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 2 }}>
-                      {m.discount > 0 ? `${((m.discount / (m.revenue + m.discount)) * 100).toFixed(1)}% del bruto` : '0%'}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          <button onClick={() => setTab('coupons')} className={`btn btn-sm ${tab === 'coupons' ? 'btn-primary' : 'btn-secondary'}`}>
-            🎟️ Cupones de referido
-          </button>
-          <button onClick={() => setTab('loyalty')} className={`btn btn-sm ${tab === 'loyalty' ? 'btn-primary' : 'btn-secondary'}`}>
-            🏆 Fidelización
-            {nearThreshold.length > 0 && (
-              <span style={{ marginLeft: 6, background: '#E8B84B', color: '#000', borderRadius: 100, fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px' }}>
-                {nearThreshold.length}
-              </span>
-            )}
-          </button>
+          {[{ v: 'coupons', l: '🎟️ Cupones' }, { v: 'loyalty', l: '⭐ Fidelización' }].map(({ v, l }) => (
+            <button key={v} onClick={() => setTab(v)} className={`btn ${tab === v ? 'btn-primary' : 'btn-ghost'}`}>{l}</button>
+          ))}
         </div>
 
-        {/* ── TAB: Cupones de referido ── */}
+        {/* ── CUPONES ── */}
         {tab === 'coupons' && (
           <>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+              <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+                <Plus size={15}/> Cupón de referido
+              </button>
+              <button className="btn btn-secondary" onClick={() => setShowAdminModal(true)}>
+                🔑 Cupón admin
+              </button>
+              <button className="btn btn-secondary" onClick={() => setShowSingleModal(true)}>
+                🎯 Uso único
+              </button>
+            </div>
+
+            {/* Tip cupones de producto */}
+            <div style={{ background: 'rgba(129,140,248,0.07)', border: '1px solid rgba(129,140,248,0.2)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: '0.8rem', color: '#a5b4fc' }}>
+              <Tag size={13} style={{ marginRight: 6 }}/>
+              <strong>Cupones de producto:</strong> al crear cualquier cupón podés restringirlo a una hamburguesa específica.
+              Ejemplo: <em>CHEESE10</em> → 10% solo en la Cheeseburger Doble.
+            </div>
+
             {coupons.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--gray)' }}>
-                <div style={{ fontSize: '3rem', marginBottom: 12 }}>🎟️</div>
-                <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.5rem', marginBottom: 8 }}>Sin cupones todavía</div>
-                <div style={{ fontSize: '0.85rem' }}>Creá un cupón y asignalo a un cliente estrella</div>
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--gray)' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🎟️</div>
+                <div>No hay cupones creados todavía.</div>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {coupons.map(coupon => (
-                  <div key={coupon._id} style={{
-                    background: 'var(--card)',
-                    border: `1px solid ${coupon.active ? 'var(--border)' : 'rgba(255,255,255,0.05)'}`,
-                    borderRadius: 12, padding: 20,
-                    opacity: coupon.active ? 1 : 0.55,
-                    transition: 'opacity 0.2s'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                      <div>
-                        <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.6rem', color: 'var(--gold)', letterSpacing: '0.05em' }}>{coupon.code}</div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--gray)', marginTop: 2 }}>
-                          👤 Dueño: <strong style={{ color: 'white' }}>{coupon.ownerName}</strong>
-                        </div>
-                      </div>
-
-                      {/* Toggle switch + Eliminar */}
-                      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                        <button
-                          onClick={() => handleDelete(coupon)}
-                          title="Eliminar cupón"
-                          style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}
-                        >
-                          🗑️ Eliminar
-                        </button>
-                        <div
-                          onClick={() => handleToggle(coupon)}
-                          title={coupon.active ? 'Desactivar cupón' : 'Activar cupón'}
-                          style={{
-                            width: 44, height: 24, borderRadius: 100, cursor: 'pointer',
-                            transition: 'background 0.2s',
-                            background: coupon.active
-                              ? 'linear-gradient(135deg, var(--gold-dark), var(--gold))'
-                              : 'rgba(255,255,255,0.12)',
-                            position: 'relative', flexShrink: 0
-                          }}
-                        >
-                          <div style={{
-                            position: 'absolute', top: 3,
-                            left: coupon.active ? 23 : 3,
-                            width: 18, height: 18, borderRadius: '50%',
-                            background: '#fff', transition: 'left 0.2s',
-                            boxShadow: '0 1px 4px rgba(0,0,0,0.3)'
-                          }} />
-                        </div>
-                        <span style={{ fontSize: '0.75rem', color: coupon.active ? 'var(--green)' : 'var(--gray)', fontWeight: 600 }}>
-                          {coupon.active ? 'Activo' : 'Inactivo'}
-                        </span>
-                        {coupon.unlimited && (
-                          <span style={{ fontSize: '0.68rem', background: 'rgba(99,102,241,0.15)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 100, padding: '2px 8px', fontWeight: 700 }}>
-                            ∞ Admin
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
-                      {[
-                        { label: 'Descuento para usuario', value: `${coupon.discountForUser}%` },
-                        { label: 'Recompensa por uso',     value: `${coupon.rewardPerUse}%`    },
-                        { label: 'Usos totales',           value: coupon.totalUses             }
-                      ].map(s => (
-                        <div key={s.label} style={{ background: 'var(--dark)', borderRadius: 8, padding: '10px 14px' }}>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--gray)', marginBottom: 2 }}>{s.label}</div>
-                          <div style={{ fontWeight: 700, color: 'var(--gold)' }}>{s.value}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Recompensa pendiente */}
-                    {coupon.ownerPendingDiscount > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(232,184,75,0.08)', border: '1px solid rgba(232,184,75,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 12 }}>
-                        <span style={{ fontSize: '0.85rem' }}>
-                          🎁 Recompensa pendiente para <strong>{coupon.ownerName}</strong>: <strong style={{ color: 'var(--gold)' }}>{coupon.ownerPendingDiscount}%</strong>
-                        </span>
-                        <button className="btn btn-secondary btn-sm" onClick={() => handleResetReward(coupon)}>
-                          Marcar como usada
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Historial de usos */}
-                    {coupon.uses?.length > 0 && (
-                      <div>
-                        <button
-                          onClick={() => setSelectedCoupon(selectedCoupon?._id === coupon._id ? null : coupon)}
-                          style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}
-                        >
-                          {selectedCoupon?._id === coupon._id ? '▲ Ocultar usos' : `▼ Ver ${coupon.uses.length} uso${coupon.uses.length > 1 ? 's' : ''}`}
-                        </button>
-                        {selectedCoupon?._id === coupon._id && (
-                          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {coupon.uses.map((use, i) => (
-                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', padding: '6px 10px', background: 'var(--dark)', borderRadius: 6 }}>
-                                <span>{use.clientName} <span style={{ color: 'var(--gray)' }}>· {use.orderNumber}</span></span>
-                                <span style={{ color: 'var(--gold)' }}>-{use.discountApplied}%</span>
-                              </div>
-                            ))}
+              <div>
+                {coupons.map(coupon => {
+                  const { label: tLabel, color: tColor } = typeLabel(coupon);
+                  const isExpired = coupon.expiresAt && new Date() > new Date(coupon.expiresAt);
+                  return (
+                    <div key={coupon._id} style={{ background: 'var(--card)', border: `1px solid ${!coupon.active || isExpired ? 'rgba(239,68,68,0.2)' : 'var(--border)'}`, borderRadius: 12, padding: '16px 20px', marginBottom: 12, opacity: isExpired ? 0.7 : 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontFamily: 'Bebas Neue', fontSize: '1.4rem', letterSpacing: 1 }}>{coupon.code}</span>
+                            <span style={{ background: `${tColor}20`, color: tColor, fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20, textTransform: 'uppercase' }}>{tLabel}</span>
+                            {coupon.singleUse && <span style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>1 USO</span>}
+                            {coupon.unlimited && <span style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>ILIMITADO</span>}
+                            {isExpired && <span style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>VENCIDO</span>}
                           </div>
-                        )}
+                          <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginTop: 4 }}>
+                            Dueño: <strong style={{ color: 'white' }}>{coupon.ownerName}</strong>
+                            {coupon.applicableProductName && (
+                              <span style={{ marginLeft: 8, color: '#818cf8' }}>
+                                <Tag size={11} style={{ marginRight: 3 }}/>
+                                Solo para: <strong>{coupon.applicableProductName}</strong>
+                              </span>
+                            )}
+                            {coupon.expiresAt && (
+                              <span style={{ marginLeft: 8, color: isExpired ? '#ef4444' : 'var(--gray)' }}>
+                                · Vence: {new Date(coupon.expiresAt).toLocaleDateString('es-AR')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.6rem', color: 'var(--gold)' }}>{coupon.discountForUser}%</div>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--gray)' }}>{coupon.totalUses} uso{coupon.totalUses !== 1 ? 's' : ''}</div>
+                          </div>
+                          <button onClick={() => handleToggle(coupon)}
+                            style={{ width: 42, height: 24, borderRadius: 12, background: coupon.active ? 'var(--gold)' : 'var(--dark)', border: 'none', cursor: 'pointer', transition: 'all 0.2s', position: 'relative' }}>
+                            <span style={{ position: 'absolute', top: 3, left: coupon.active ? 21 : 3, width: 18, height: 18, borderRadius: '50%', background: coupon.active ? '#000' : '#555', transition: 'all 0.2s' }}/>
+                          </button>
+                          <button onClick={() => handleDelete(coupon)} className="btn-icon" style={{ color: '#ef4444' }}>✕</button>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      {coupon.ownerPendingDiscount > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(232,184,75,0.08)', border: '1px solid rgba(232,184,75,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 12 }}>
+                          <span style={{ fontSize: '0.85rem' }}>
+                            🎁 Recompensa pendiente para <strong>{coupon.ownerName}</strong>: <strong style={{ color: 'var(--gold)' }}>{coupon.ownerPendingDiscount}%</strong>
+                          </span>
+                          <button className="btn btn-secondary btn-sm" onClick={() => handleResetReward(coupon)}>Marcar como usada</button>
+                        </div>
+                      )}
+
+                      {coupon.uses?.length > 0 && (
+                        <div>
+                          <button onClick={() => setSelectedCoupon(selectedCoupon?._id === coupon._id ? null : coupon)}
+                            style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}>
+                            {selectedCoupon?._id === coupon._id ? '▲ Ocultar usos' : `▼ Ver ${coupon.uses.length} uso${coupon.uses.length !== 1 ? 's' : ''}`}
+                          </button>
+                          {selectedCoupon?._id === coupon._id && (
+                            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {coupon.uses.map((use, i) => (
+                                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', padding: '6px 10px', background: 'var(--dark)', borderRadius: 6 }}>
+                                  <span>{use.clientName} <span style={{ color: 'var(--gray)' }}>· {use.orderNumber}</span></span>
+                                  <span style={{ color: 'var(--gold)' }}>-{use.discountApplied}{typeof use.discountApplied === 'number' && use.discountApplied < 100 ? '%' : ''}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </>
         )}
 
-        {/* ── TAB: Fidelización ── */}
+        {/* ── FIDELIZACIÓN ── */}
         {tab === 'loyalty' && (
           <>
             {loyaltyConfig && (
               <div style={{ background: loyaltyConfig.enabled ? 'rgba(232,184,75,0.06)' : 'var(--card)', border: `1px solid ${loyaltyConfig.enabled ? 'rgba(232,184,75,0.3)' : 'var(--border)'}`, borderRadius: 12, padding: '14px 18px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: '1.5rem' }}>{loyaltyConfig.enabled ? '🟢' : '⚪'}</span>
                 <div>
-                  <div style={{ fontWeight: 600 }}>
-                    {loyaltyConfig.enabled ? 'Sistema de puntos activo' : 'Sistema de puntos inactivo'}
-                  </div>
+                  <div style={{ fontWeight: 600 }}>{loyaltyConfig.enabled ? 'Sistema de puntos activo' : 'Sistema de puntos inactivo'}</div>
                   <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: 2 }}>
                     {loyaltyConfig.enabled
                       ? `1 punto cada $${loyaltyConfig.pointsPerPeso} • Cupón al llegar a ${loyaltyConfig.redeemThreshold} pts • ${loyaltyConfig.couponPercent}% de descuento`
@@ -330,7 +319,7 @@ export default function Coupons() {
                 <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🏆</div>
                 <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.3rem', marginBottom: 6 }}>Sin clientes cerca del umbral</div>
                 <div style={{ fontSize: '0.82rem' }}>
-                  {loyaltyConfig?.enabled ? 'Aparecerán aquí cuando estén al 70% del umbral de canje' : 'Activá el sistema de puntos para empezar a acumular'}
+                  {loyaltyConfig?.enabled ? 'Aparecerán aquí cuando estén al 70% del umbral' : 'Activá el sistema de puntos para empezar'}
                 </div>
               </div>
             ) : (
@@ -349,9 +338,7 @@ export default function Coupons() {
                           <div style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>{client.whatsapp}</div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.4rem', color: pct >= 100 ? '#22c55e' : 'var(--gold)' }}>
-                            {client.loyaltyPoints} pts
-                          </div>
+                          <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.4rem', color: pct >= 100 ? '#22c55e' : 'var(--gold)' }}>{client.loyaltyPoints} pts</div>
                           <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>de {threshold}</div>
                         </div>
                       </div>
@@ -375,7 +362,9 @@ export default function Coupons() {
         )}
       </div>
 
-      {/* Modal nuevo cupón */}
+      {/* ── MODALES ── */}
+
+      {/* Modal cupón de referido */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -405,6 +394,15 @@ export default function Coupons() {
                   <input type="number" value={form.rewardPerUse} onChange={e => setForm(f => ({ ...f, rewardPerUse: Number(e.target.value) }))} />
                 </div>
               </div>
+              <div className="form-group">
+                <label>🍔 Restringir a producto específico (opcional)</label>
+                <ProductSelector value={form.applicableProduct} onChange={v => setForm(f => ({ ...f, applicableProduct: v }))} />
+                {form.applicableProduct && <div style={{ fontSize: '0.75rem', color: '#818cf8', marginTop: 4 }}>El descuento solo aplica a ese producto dentro del pedido.</div>}
+              </div>
+              <div className="form-group">
+                <label>📅 Fecha de vencimiento (opcional)</label>
+                <input type="date" value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))} />
+              </div>
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancelar</button>
@@ -414,18 +412,17 @@ export default function Coupons() {
         </div>
       )}
 
-
       {/* Modal cupón admin */}
       {showAdminModal && (
         <div className="modal-overlay" onClick={() => setShowAdminModal(false)}>
-          <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>🔑 Cupón Admin</h2>
               <button className="btn-icon" onClick={() => setShowAdminModal(false)}>✕</button>
             </div>
             <div className="modal-body">
               <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 10, padding: '12px 14px', marginBottom: 20, fontSize: '0.82rem', color: '#a5b4fc' }}>
-                💡 Este cupón es de <strong>uso ilimitado</strong> — podés aplicarlo todas las veces que quieras y desactivarlo con el switch cuando no lo necesites. Ideal para que vos o tu equipo paguen al costo sin perder en mercadería.
+                💡 Este cupón es de <strong>uso ilimitado</strong>. Ideal para consumo interno o equipo.
               </div>
               <div className="form-group">
                 <label>Código *</label>
@@ -438,9 +435,14 @@ export default function Coupons() {
               <div className="form-group">
                 <label>% de descuento</label>
                 <input type="number" min={0} max={100} value={adminForm.discountForUser} onChange={e => setAdminForm(f => ({ ...f, discountForUser: Number(e.target.value) }))} />
-                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4 }}>
-                  Poné el % que cubre tu ganancia. Ej: si tu margen es 40%, poné 40 — pagás solo el costo.
-                </div>
+              </div>
+              <div className="form-group">
+                <label>🍔 Restringir a producto específico (opcional)</label>
+                <ProductSelector value={adminForm.applicableProduct} onChange={v => setAdminForm(f => ({ ...f, applicableProduct: v }))} />
+              </div>
+              <div className="form-group">
+                <label>📅 Fecha de vencimiento (opcional)</label>
+                <input type="date" value={adminForm.expiresAt} onChange={e => setAdminForm(f => ({ ...f, expiresAt: e.target.value }))} />
               </div>
             </div>
             <div className="modal-footer">
@@ -454,26 +456,34 @@ export default function Coupons() {
       {/* Modal cupón de uso único */}
       {showSingleModal && (
         <div className="modal-overlay" onClick={() => setShowSingleModal(false)}>
-          <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>🎟️ Cupón de Uso Único</h2>
+              <h2>🎯 Cupón de Uso Único</h2>
               <button className="btn-icon" onClick={() => setShowSingleModal(false)}>✕</button>
             </div>
             <div className="modal-body">
               <div style={{ background: 'rgba(232,184,75,0.08)', border: '1px solid rgba(232,184,75,0.2)', borderRadius: 10, padding: '12px 14px', marginBottom: 20, fontSize: '0.82rem', color: '#f5d06a' }}>
-                🎯 Este cupón solo puede usarlo <strong>un cliente, una sola vez</strong>. Una vez utilizado se desactiva automáticamente. Ideal para regalar a un cliente específico o como premio.
+                🎯 Solo puede usarlo <strong>un cliente, una sola vez</strong>. Se desactiva automáticamente.
               </div>
               <div className="form-group">
                 <label>Código *</label>
-                <input value={singleForm.code} onChange={e => setSingleForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="Ej: REGALO2024, CUMPLE-ANA" />
+                <input value={singleForm.code} onChange={e => setSingleForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="Ej: REGALO2024" />
               </div>
               <div className="form-group">
                 <label>Etiqueta interna</label>
-                <input value={singleForm.label} onChange={e => setSingleForm(f => ({ ...f, label: e.target.value }))} placeholder="Ej: Premio sorteo, Cumpleaños..." />
+                <input value={singleForm.label} onChange={e => setSingleForm(f => ({ ...f, label: e.target.value }))} placeholder="Premio sorteo, Cumpleaños..." />
               </div>
               <div className="form-group">
                 <label>% de descuento</label>
                 <input type="number" min={1} max={100} value={singleForm.discountForUser} onChange={e => setSingleForm(f => ({ ...f, discountForUser: Number(e.target.value) }))} />
+              </div>
+              <div className="form-group">
+                <label>🍔 Restringir a producto específico (opcional)</label>
+                <ProductSelector value={singleForm.applicableProduct} onChange={v => setSingleForm(f => ({ ...f, applicableProduct: v }))} />
+              </div>
+              <div className="form-group">
+                <label>📅 Fecha de vencimiento (opcional)</label>
+                <input type="date" value={singleForm.expiresAt} onChange={e => setSingleForm(f => ({ ...f, expiresAt: e.target.value }))} />
               </div>
             </div>
             <div className="modal-footer">
@@ -494,8 +504,8 @@ export default function Coupons() {
             </div>
             <div className="modal-body">
               <p style={{ color: 'var(--gray)', marginBottom: 16 }}>
-                Acreditá puntos manualmente a <strong style={{ color: 'white' }}>{awardModal.name}</strong>.
-                Actualmente tiene <strong style={{ color: 'var(--gold)' }}>{awardModal.loyaltyPoints || 0} puntos</strong>.
+                Acreditá puntos a <strong style={{ color: 'white' }}>{awardModal.name}</strong>.
+                Tiene <strong style={{ color: 'var(--gold)' }}>{awardModal.loyaltyPoints || 0} puntos</strong>.
               </p>
               <div className="form-group">
                 <label>Puntos a acreditar</label>

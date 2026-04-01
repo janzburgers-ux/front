@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { Instagram } from 'lucide-react';
+import { FaWhatsapp } from "react-icons/fa"
 import API from '../utils/api';
 import toast from 'react-hot-toast';
 import logoJanz from '../assets/logo-janz.png';
@@ -237,7 +238,7 @@ export default function PublicOrder() {
     try { return !localStorage.getItem('janz_visited'); } catch { return false; }
   });
   const [limits, setLimits]         = useState({ enabled: false, limitReached: false, dailyMax: 50, todayCount: 0 });
-  const [businessWhatsapp, setBusinessWhatsapp] = useState('');
+  const [businessWhatsapp, setBusinessWhatsapp] = useState('1140495908');
   const [submitting, setSubmitting]             = useState(false);
   const [orderResult, setOrderResult]           = useState(null);
   const [orderStatus, setOrderStatus]           = useState(null);
@@ -263,6 +264,10 @@ export default function PublicOrder() {
   });
   const [scheduledFor, setScheduledFor]         = useState('asap');
   const [hourlyDiscount, setHourlyDiscount]     = useState(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [pendingOrderCode, setPendingOrderCode] = useState(() => {
+    try { return localStorage.getItem('janz_pending_order') || null; } catch { return null; }
+  });
   const [prodeEnabled, setProdeEnabled]         = useState(false);
   const [clientId, setClientId]                 = useState(null);
   const [schedule, setSchedule]                 = useState({ openHour: 19, closeHour: 23 });
@@ -371,7 +376,13 @@ export default function PublicOrder() {
     setValidatingCoupon(true);
     try {
       const res = await API.post('/coupons/validate', { code: couponCode.trim(), whatsapp: client.whatsapp });
-      setCouponStatus({ valid: true, discountPercent: res.data.discountPercent, message: res.data.message });
+      setCouponStatus({
+        valid: true,
+        discountPercent: res.data.discountPercent,
+        message: res.data.message,
+        applicableProduct: res.data.applicableProduct || null,
+        applicableProductName: res.data.applicableProductName || null
+      });
     } catch (e) { setCouponStatus({ valid: false, message: e.response?.data?.message || 'Cupón inválido' }); }
     finally { setValidatingCoupon(false); }
   };
@@ -381,10 +392,17 @@ export default function PublicOrder() {
     if (!paymentMethod) { toast.error('Seleccioná un método de pago'); return; }
     if (deliveryType === 'delivery' && zones.length > 0 && !selectedZone) { toast.error('Seleccioná tu zona de delivery'); return; }
     if (scheduledFor !== 'asap') {
-      const openStr  = `${String(schedule.openHour  || 19).padStart(2,'0')}:00`;
-      const closeStr = `${String(schedule.closeHour || 23).padStart(2,'0')}:00`;
+      const toHHMM = v => (typeof v === 'string' && v.includes(':')) ? v : `${String(Number(v)||0).padStart(2,'0')}:00`;
+      const openStr  = toHHMM(schedule.openHour)  || '19:00';
+      const closeStr = toHHMM(schedule.closeHour) || '23:00';
       if (scheduledFor < openStr || scheduledFor > closeStr) { toast.error(`Horario fuera del comercial (${openStr} a ${closeStr}hs).`); return; }
     }
+    // Mostrar modal de confirmación antes de enviar
+    setShowConfirmModal(true);
+  };
+
+  const doSubmit = async () => {
+    setShowConfirmModal(false);
     setSubmitting(true);
     try {
       const res = await API.post('/public/order', {
@@ -398,6 +416,9 @@ export default function PublicOrder() {
         couponCode: couponStatus?.valid ? couponCode.trim() : null
       });
       try { localStorage.setItem('janz_client_data', JSON.stringify({ name: client.name, whatsapp: client.whatsapp, address: client.address, floor: client.floor, references: client.references })); } catch {}
+      // Guardar pedido pendiente para evitar duplicados
+      try { localStorage.setItem('janz_pending_order', res.data.publicCode || res.data.orderNumber); } catch {}
+      setPendingOrderCode(res.data.publicCode || res.data.orderNumber);
       setOrderResult(res.data); setOrderStatus('pending'); setStep('tracking');
     } catch (e) { toast.error(e.response?.data?.message || 'Error al enviar pedido'); }
     finally { setSubmitting(false); }
@@ -410,13 +431,44 @@ export default function PublicOrder() {
 
   if (loading) return <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="spinner" /></div>;
 
+  // ── Bloqueo anti-duplicado ─────────────────────────────────────────────────
+  // Si hay un pedido pendiente en localStorage y NO estamos en la pantalla de tracking,
+  // mostramos un aviso. El cliente tiene que esperar o decidir cancelar.
+  if (pendingOrderCode && step !== 'tracking') return (
+    <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ textAlign: 'center', maxWidth: 400 }}>
+        <img src={logoJanz} alt="Janz" style={{ height: 52, objectFit: 'contain', marginBottom: 24, opacity: 0.9 }} />
+        <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>⏳</div>
+        <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#E8B84B', marginBottom: 8 }}>Ya tenés un pedido en curso</div>
+        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem', marginBottom: 20, lineHeight: 1.7 }}>
+          Tu pedido <strong style={{ color: '#E8B84B', letterSpacing: 1 }}>{pendingOrderCode}</strong> ya fue enviado.<br/>
+          Esperá a recibirlo antes de hacer otro.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {businessWhatsapp && (
+            <a href={`https://wa.me/54${businessWhatsapp.replace(/\D/g,'')}`} target="_blank" rel="noreferrer"
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#25D366', color: 'white', padding: '13px 24px', borderRadius: 12, fontWeight: 700, textDecoration: 'none', fontSize: '0.9rem' }}>
+              <FaWhatsapp size={24} /> Consultar mi pedido por WhatsApp
+            </a>
+          )}
+          <button onClick={() => {
+            try { localStorage.removeItem('janz_pending_order'); } catch {}
+            setPendingOrderCode(null);
+          }} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)', padding: '11px 20px', borderRadius: 12, fontWeight: 600, cursor: 'pointer', fontSize: '0.82rem' }}>
+            Ya lo recibí — hacer nuevo pedido
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (systemDown) return (
     <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ textAlign: 'center', maxWidth: 400 }}>
-        <div style={{ fontSize: '3rem', marginBottom: 16 }}>🔧</div>
+        <div style={{ fontSize: '3rem', marginBottom: 16 }}>🔧🫠</div>
         <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#E8B84B', marginBottom: 12 }}>Sistema temporalmente fuera de servicio</div>
         <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem', marginBottom: 24, lineHeight: 1.7 }}>Por favor realizá tu pedido por WhatsApp.</div>
-        {businessWhatsapp && <a href={`https://wa.me/54${businessWhatsapp.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: '#25D366', color: 'white', padding: '14px 24px', borderRadius: 12, fontWeight: 700, textDecoration: 'none' }}>💬 Pedido por WhatsApp</a>}
+        {businessWhatsapp && <a href={`https://wa.me/54${businessWhatsapp.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: '#25D366', color: 'white', padding: '14px 24px', borderRadius: 12, fontWeight: 700, textDecoration: 'none' }}><FaWhatsapp size={24} />  Pedido por WhatsApp</a>}
       </div>
     </div>
   );
@@ -473,7 +525,10 @@ export default function PublicOrder() {
         <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: '0.75rem', color: '#ef4444' }}>
           ⚠️ Si necesitás cancelar, contactanos por WhatsApp.
         </div>
-        <button onClick={() => { setCart([]); setStep('menu'); setOrderResult(null); setOrderStatus(null); setPaymentMethod(''); setCouponCode(''); setCouponStatus(null); setSelectedZone(''); }}
+        <button onClick={() => { setCart([]); setStep('menu'); setOrderResult(null); setOrderStatus(null); setPaymentMethod(''); setCouponCode(''); setCouponStatus(null); setSelectedZone('');
+          try { localStorage.removeItem('janz_pending_order'); } catch {}
+          setPendingOrderCode(null);
+        }}
           style={{ width: '100%', background: 'rgba(255,255,255,0.04)', color: '#555', border: '1px solid rgba(255,255,255,0.07)', padding: '13px', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>
           Hacer otro pedido
         </button>
@@ -497,6 +552,66 @@ export default function PublicOrder() {
 
   return (
     <>
+    {/* ── Modal de confirmación pre-envío ───────────────────────────────────── */}
+    {showConfirmModal && (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 300 }}>
+        <div style={{ background: '#0f0f0f', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 520, padding: 24, maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderBottom: 'none' }}>
+          <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 99, margin: '0 auto 20px' }} />
+          <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'white', marginBottom: 4 }}>¿Confirmás tu pedido?</div>
+          <div style={{ color: '#444', fontSize: '0.82rem', marginBottom: 20 }}>Revisá todo antes de enviarlo. Una vez enviado no podés modificarlo.</div>
+
+          {/* Ítems */}
+          {cart.map((item, i) => (
+            <div key={i} style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem' }}>
+                <span style={{ color: '#aaa' }}>{item.productName} {item.variant} ×{item.quantity}</span>
+                <span style={{ color: 'white', fontWeight: 600 }}>{fmt(item.unitPrice * item.quantity)}</span>
+              </div>
+              {(item.additionals || []).map((a, ai) => (
+                <div key={ai} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#444', paddingLeft: 10, marginTop: 2 }}>
+                  <span>+ {a.name} ×{a.quantity}</span><span>+ {fmt(a.unitPrice * a.quantity)}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 12, paddingTop: 12 }}>
+            {discount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#22c55e', marginBottom: 6 }}>
+                <span>{couponStatus?.valid ? `🎟️ Cupón ${couponCode}` : `🎉 Descuento ${activeDiscountPercent}%`}</span>
+                <span>- {fmt(discount)}</span>
+              </div>
+            )}
+            {deliveryType === 'delivery' && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 6, color: deliveryCost === 0 ? '#22c55e' : '#555' }}>
+                <span>🛵 Delivery</span><span>{deliveryCost === 0 ? '¡Gratis!' : fmt(deliveryCost)}</span>
+              </div>
+            )}
+            {deliveryType === 'delivery' && client.address && (
+              <div style={{ fontSize: '0.78rem', color: '#333', marginBottom: 8 }}>📍 {[client.address, client.floor, client.references].filter(Boolean).join(' — ')}</div>
+            )}
+            {scheduledFor !== 'asap' && (
+              <div style={{ fontSize: '0.78rem', color: '#E8B84B', marginBottom: 8 }}>⏰ Programado para las {scheduledFor}hs</div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+              <span style={{ fontWeight: 700, color: '#E8B84B', fontSize: '0.75rem', textTransform: 'uppercase' }}>TOTAL A PAGAR</span>
+              <span style={{ fontSize: '1.8rem', fontWeight: 900, color: 'white' }}>{fmt(totalFinal)}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+            <button onClick={() => setShowConfirmModal(false)}
+              style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: '#666', border: '1px solid rgba(255,255,255,0.08)', padding: '13px', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>
+              ← Corregir
+            </button>
+            <button onClick={doSubmit} disabled={submitting}
+              style={{ flex: 2, background: submitting ? '#222' : '#E8B84B', color: submitting ? '#555' : '#000', border: 'none', padding: '13px', borderRadius: 10, fontWeight: 800, cursor: submitting ? 'not-allowed' : 'pointer', fontSize: '0.95rem' }}>
+              {submitting ? 'Enviando...' : '✅ Sí, confirmar pedido'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     {showWelcome && (
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
         <div style={{ background: '#111', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '28px 24px 36px', maxHeight: '90vh', overflowY: 'auto' }}>
@@ -575,8 +690,8 @@ export default function PublicOrder() {
               <a href="https://www.instagram.com/janz.burgers" target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'rgba(255,255,255,0.35)', textDecoration: 'none', fontSize: '0.78rem' }}>
                 <Instagram size={12} /> @janz.burgers
               </a>
-              <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.2)' }} />
-              <span style={{ fontSize: '0.75rem', color: open ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{open ? '● Abierto' : '● Cerrado'}</span>
+              <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'hsla(0, 0%, 100%, 0.20)' }} />
+              <span style={{ fontSize: '1rem', color: open ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{open ? '● Abierto' : '● Cerrado'}</span>
             </div>
           </div>
           <div className="janz-hero-prode">
@@ -702,28 +817,54 @@ export default function PublicOrder() {
             </div>
 
             {(() => {
-              const openStr  = `${String(schedule.openHour  || 19).padStart(2,'0')}:00`;
-              const closeStr = `${String(schedule.closeHour || 23).padStart(2,'0')}:00`;
-              const isOutsideHours = scheduledFor !== 'asap' && (scheduledFor < openStr || scheduledFor > closeStr);
-              return (
-                <div style={{ marginBottom: 18 }}>
-                  <div style={labelStyle}>⏰ ¿Cuándo lo querés?</div>
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                    <button onClick={() => setScheduledFor('asap')} style={{ flex: 1, padding: '11px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', transition: 'all 0.2s', background: scheduledFor === 'asap' ? '#E8B84B' : 'rgba(255,255,255,0.05)', color: scheduledFor === 'asap' ? '#000' : '#555' }}>🚀 Lo antes posible</button>
-                    <button onClick={() => setScheduledFor(scheduledFor === 'asap' ? openStr : scheduledFor)} style={{ flex: 1, padding: '11px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', transition: 'all 0.2s', background: scheduledFor !== 'asap' ? 'rgba(232,184,75,0.1)' : 'rgba(255,255,255,0.05)', color: scheduledFor !== 'asap' ? '#E8B84B' : '#555', outline: scheduledFor !== 'asap' ? '1.5px solid rgba(232,184,75,0.3)' : 'none' }}>🕐 Programar</button>
-                  </div>
-                  {scheduledFor !== 'asap' && (
-                    <div>
-                      <input type="time" value={scheduledFor} min={openStr} max={closeStr} onChange={e => setScheduledFor(e.target.value)} style={{ ...inputStyle, textAlign: 'center', fontSize: '1.1rem', fontWeight: 700, borderColor: isOutsideHours ? '#ef4444' : 'rgba(255,255,255,0.1)' }} />
-                      {isOutsideHours
-                        ? <div style={{ marginTop: 8, padding: '10px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, fontSize: '0.8rem', color: '#fca5a5' }}>⚠️ Fuera del horario comercial ({openStr} a {closeStr}hs)</div>
-                        : <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, fontSize: '0.76rem', color: '#444' }}>✓ Programado para las {scheduledFor}hs</div>
-                      }
+              // openHour y closeHour pueden venir como "19:30" (string HH:MM) o como número (legacy)
+              const parseTime = v => {
+                if (typeof v === 'string' && v.includes(':')) {
+                  const [h, m] = v.split(':').map(Number);
+                  return { h: h || 0, m: m || 0 };
+                }
+                return { h: Number(v) || 0, m: 0 };
+              };
+              const open  = parseTime(schedule.openHour);
+              const close = parseTime(schedule.closeHour);
+              // Convertir a minutos totales para comparar fácilmente
+              const openMins  = (open.h  || 19) * 60 + open.m;
+              const closeMins = (close.h || 23) * 60 + close.m;
+              // Generar slots de 30 en 30 desde apertura hasta cierre (sin incluir cierre)
+              const slots = [];
+              for (let mins = openMins; mins < closeMins; mins += 30) {
+                const hh = String(Math.floor(mins / 60)).padStart(2, '0');
+                const mm = String(mins % 60).padStart(2, '0');
+                slots.push(`${hh}:${mm}`);
+              }
+                return (
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={labelStyle}>⏰ ¿Cuándo lo querés?</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      <button onClick={() => setScheduledFor('asap')}
+                        style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', transition: 'all 0.2s',
+                          background: scheduledFor === 'asap' ? '#E8B84B' : 'rgba(255,255,255,0.07)',
+                          color: scheduledFor === 'asap' ? '#000' : 'rgba(255,255,255,0.75)' }}>
+                        🚀 Lo antes posible
+                      </button>
+                      {slots.map(slot => (
+                        <button key={slot} onClick={() => setScheduledFor(slot)}
+                          style={{ padding: '10px 14px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', transition: 'all 0.2s',
+                            background: scheduledFor === slot ? 'rgba(232,184,75,0.2)' : 'rgba(255,255,255,0.07)',
+                            border: scheduledFor === slot ? '1.5px solid rgba(232,184,75,0.6)' : '1px solid rgba(255,255,255,0.1)',
+                            color: scheduledFor === slot ? '#E8B84B' : 'rgba(255,255,255,0.75)' }}>
+                          🕐 {slot}hs
+                        </button>
+                      ))}
                     </div>
-                  )}
-                </div>
-              );
-            })()}
+                    {scheduledFor !== 'asap' && (
+                      <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, fontSize: '0.76rem', color: '#aaa' }}>
+                        ✓ Programado para las <strong style={{ color: '#E8B84B' }}>{scheduledFor}hs</strong>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
             <div style={{ marginBottom: 18 }}><label style={labelStyle}>Notas del pedido</label><textarea value={client.notes} onChange={e => setClient(c => ({ ...c, notes: e.target.value }))} placeholder={notesPlaceholder} rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} /></div>
 
@@ -800,52 +941,99 @@ export default function PublicOrder() {
           <div className="janz-desktop-layout">
             {/* Columna menú */}
             <div className="janz-menu-col">
-              {Object.entries(menu).map(([name, variants]) => {
-                const order = { Simple: 0, Doble: 1, Triple: 2 };
-                const sortedVariants = [...variants].sort((a, b) => (order[a.variant] ?? 99) - (order[b.variant] ?? 99));
-                const description = sortedVariants[0]?.description;
-                const image = variants.find(v => v.image)?.image;
-                return (
-                  <div key={name} className="janz-product-card" style={{ marginBottom: 14, background: '#0f0f0f', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 16, overflow: 'hidden', display: 'flex' }}>
-                    <div className="janz-product-img-wrap">
-                      {image ? <img src={image} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block', minHeight: '100%' }} /> : <div style={{ width: '100%', height: '100%', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40 }}>🍔</div>}
-                    </div>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                      <div style={{ padding: '14px 16px 6px' }}>
-                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#E8B84B', lineHeight: 1, letterSpacing: '-0.3px' }}>{name}</div>
-                        {description && <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.76rem', fontWeight: 600, marginTop: 5, lineHeight: 1.5 }}>{description}</div>}
+              {(() => {
+                // Agrupar todos los grupos por tipo de producto (burger / papas / otro)
+                const groups = Object.entries(menu).map(([name, variants]) => ({
+                  name,
+                  variants,
+                  productType: variants[0]?.productType || 'burger'
+                }));
+
+                const burgerGroups = groups.filter(g => g.productType === 'burger');
+                const papasGroups  = groups.filter(g => g.productType === 'papas');
+                const otrosGroups  = groups.filter(g => g.productType !== 'burger' && g.productType !== 'papas');
+
+                const ProductCard = ({ name, variants }) => {
+                  const order = { Simple: 0, Doble: 1, Triple: 2 };
+                  const sortedVariants = [...variants].sort((a, b) => (order[a.variant] ?? 99) - (order[b.variant] ?? 99));
+                  const description = sortedVariants[0]?.description;
+                  const image = variants.find(v => v.image)?.image;
+                  return (
+                    <div className="janz-product-card" style={{ marginBottom: 14, background: '#0f0f0f', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 16, overflow: 'hidden', display: 'flex' }}>
+                      <div className="janz-product-img-wrap">
+                        {image
+                          ? <img src={image} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block', minHeight: '100%' }} />
+                          : <div style={{ width: '100%', height: '100%', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40 }}>🍔</div>}
                       </div>
-                      <div style={{ padding: '4px 0 8px' }}>
-                        {sortedVariants.map((p, idx) => {
-                          const inCart = cart.find(i => i.product === p._id);
-                          const unavailable = !p.available;
-                          return (
-                            <div key={p._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 16px', borderTop: idx > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none', opacity: unavailable ? 0.4 : 1 }}>
-                              <div>
-                                <div style={{ fontWeight: 700, color: 'white', fontSize: '0.9rem' }}>{p.variant}{unavailable && <span style={{ color: '#ef4444', fontSize: '0.65rem', marginLeft: 8, fontWeight: 500 }}>NO DISPONIBLE</span>}</div>
-                                <div style={{ color: '#E8B84B', fontWeight: 800, fontSize: '0.95rem', marginTop: 2 }}>{fmt(p.salePrice)}</div>
-                              </div>
-                              {!unavailable && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                  {inCart ? (
-                                    <>
-                                      <button onClick={() => removeFromCart(p._id)} style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.07)', border: 'none', color: 'white', fontSize: '1rem', cursor: 'pointer' }}>−</button>
-                                      <span style={{ fontWeight: 800, minWidth: 18, textAlign: 'center', color: 'white', fontSize: '0.95rem' }}>{inCart.quantity}</span>
-                                      <button onClick={() => handleAddToCart(p)} style={{ width: 32, height: 32, borderRadius: '50%', background: '#E8B84B', border: 'none', color: '#000', fontSize: '1rem', cursor: 'pointer', fontWeight: 800 }}>+</button>
-                                    </>
-                                  ) : (
-                                    <button onClick={() => handleAddToCart(p)} style={{ background: '#E8B84B', color: '#000', border: 'none', padding: '8px 18px', borderRadius: 9, fontWeight: 800, cursor: 'pointer', fontSize: '0.85rem' }}>Agregar</button>
-                                  )}
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                        <div style={{ padding: '14px 16px 6px' }}>
+                          <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#E8B84B', lineHeight: 1, letterSpacing: '-0.3px' }}>{name}</div>
+                          {description && <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.76rem', fontWeight: 600, marginTop: 5, lineHeight: 1.5 }}>{description}</div>}
+                        </div>
+                        <div style={{ padding: '4px 0 8px' }}>
+                          {sortedVariants.map((p, idx) => {
+                            const inCart = cart.find(i => i.product === p._id);
+                            const unavailable = !p.available;
+                            return (
+                              <div key={p._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 16px', borderTop: idx > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none', opacity: unavailable ? 0.4 : 1 }}>
+                                <div>
+                                  <div style={{ fontWeight: 700, color: 'white', fontSize: '0.9rem' }}>{p.variant}{unavailable && <span style={{ color: '#ef4444', fontSize: '0.65rem', marginLeft: 8, fontWeight: 500 }}>NO DISPONIBLE</span>}</div>
+                                  <div style={{ color: '#E8B84B', fontWeight: 800, fontSize: '0.95rem', marginTop: 2 }}>{fmt(p.salePrice)}</div>
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                                {!unavailable && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    {inCart ? (
+                                      <>
+                                        <button onClick={() => removeFromCart(p._id)} style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.07)', border: 'none', color: 'white', fontSize: '1rem', cursor: 'pointer' }}>−</button>
+                                        <span style={{ fontWeight: 800, minWidth: 18, textAlign: 'center', color: 'white', fontSize: '0.95rem' }}>{inCart.quantity}</span>
+                                        <button onClick={() => handleAddToCart(p)} style={{ width: 32, height: 32, borderRadius: '50%', background: '#E8B84B', border: 'none', color: '#000', fontSize: '1rem', cursor: 'pointer', fontWeight: 800 }}>+</button>
+                                      </>
+                                    ) : (
+                                      <button onClick={() => handleAddToCart(p)} style={{ background: '#E8B84B', color: '#000', border: 'none', padding: '8px 18px', borderRadius: 9, fontWeight: 800, cursor: 'pointer', fontSize: '0.85rem' }}>Agregar</button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
+                  );
+                };
+
+                const SectionHeader = ({ emoji, label }) => (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, marginTop: 4 }}>
+                    <span style={{ fontSize: '1.1rem' }}>{emoji}</span>
+                    <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'rgb(255, 255, 255)', textTransform: 'uppercase', letterSpacing: '0.14em' }}>{label}</span>
+                    <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
                   </div>
                 );
-              })}
+
+                return (
+                  <>
+                    {burgerGroups.length > 0 && (
+                      <div style={{ marginBottom: 8 }}>
+                        <SectionHeader emoji="" label="Hamburguesas" />
+                        {burgerGroups.map(g => <ProductCard key={g.name} name={g.name} variants={g.variants} />)}
+                      </div>
+                    )}
+                    {papasGroups.length > 0 && (
+                      <div style={{ marginBottom: 8 }}>
+                        <SectionHeader emoji="" label="Papas" />
+                        {papasGroups.map(g => <ProductCard key={g.name} name={g.name} variants={g.variants} />)}
+                      </div>
+                    )}
+                    {otrosGroups.length > 0 && (
+                      <div style={{ marginBottom: 8 }}>
+                        <SectionHeader emoji="" label="Otros" />
+                        {otrosGroups.map(g => <ProductCard key={g.name} name={g.name} variants={g.variants} />)}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
 
               {availableAdditionals.length > 0 && (
                 <div style={{ marginBottom: 40 }}>
@@ -862,15 +1050,15 @@ export default function PublicOrder() {
               )}
 
               <div style={{ textAlign: 'center', padding: '20px 0 8px', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                <img src={logoJanz} alt="Janz" style={{ height: 28, opacity: 0.15, display: 'block', margin: '0 auto 6px' }} />
-                <div style={{ color: 'rgba(255,255,255,0.12)', fontSize: '0.7rem', letterSpacing: '0.05em' }}>Janz Burgers · Pedí, Mordé, Repetí.</div>
+                <img src={logoJanz} alt="Janz" style={{ height: 40, display: 'block', margin: '0 auto 6px' }} />
+                <div style={{ color: 'rgba(255, 255, 255, 0.48)', fontSize: '0.7rem', letterSpacing: '0.05em' }}> <br /> Pedí, Disfrutá, Repetí. <br />PWA by Gianfranco Buzzelatto</div>
               </div>
             </div>
 
             {/* Sidebar carrito — solo desktop */}
             <div className="janz-sidebar">
               <div style={{ position: 'sticky', top: 20 }}>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#2a2a2a', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14 }}>Tu pedido</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14 }}>Tu pedido</div>
                 <div style={{ background: '#0f0f0f', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, padding: 20 }}>
                   {cart.length === 0 ? (
                     <div style={{ color: '#2a2a2a', fontSize: '0.85rem', textAlign: 'center', padding: '20px 0' }}>Agregá productos para empezar</div>

@@ -27,7 +27,7 @@ export default function Config() {
 
   // formularios locales
   const [alias, setAlias] = useState('');
-  const [notesPlaceholder, setNotesPlaceholder] = useState('Aclaraciones, alergias...');
+  const [notesPlaceholder, setNotesPlaceholder] = useState('Aclaraciones...');
   const [deleteOrderPassword, setDeleteOrderPassword] = useState('janz2024');
   const [schedule, setSchedule] = useState({ days: [5, 6, 0], openHour: '19:00', closeHour: '23:00' });
   const [zones, setZones] = useState([]);

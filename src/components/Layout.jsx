@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, ShoppingBag, ChefHat, Package, Beef, Users,
   ShoppingCart, LogOut, BookOpen, UserCog, Menu, X, Ticket,
-  Settings, AlertTriangle, Wallet, BarChart2, Bell, Star, Utensils, PiggyBank, Brain, Smartphone, XCircle, Receipt, FlaskConical, Trophy
+  Settings, AlertTriangle, Wallet, BarChart2, Bell, Star, Utensils, PiggyBank, Brain, Smartphone, XCircle, Receipt, FlaskConical, Trophy, Phone
 } from 'lucide-react';
 import API from '../utils/api';
 
@@ -15,6 +15,7 @@ const navGroups = [
       { to: '/gestion/dashboard',   label: 'Dashboard',        icon: LayoutDashboard },
       { to: '/gestion/pedidos',     label: 'Pedidos',          icon: ShoppingBag },
       { to: '/gestion/cocina',      label: 'Cocina',           icon: ChefHat },
+      { to: '/gestion/tomar-pedido', label: 'Tomar Pedido 📞', icon: Phone },
     ]
   },
   {
