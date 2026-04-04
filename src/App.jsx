@@ -29,6 +29,9 @@ import RecipeEditor from './pages/RecipeEditor';
 import Prode from './pages/Prode';
 import PublicProde from './pages/PublicProde';
 import AdminOrder from './pages/AdminOrder';
+import CajaGlobal from './pages/CajaGlobal';
+import WhatsappMessages from './pages/WhatsappMessages';
+import PushNotifications from './pages/PushNotifications';
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth();
@@ -76,6 +79,9 @@ function AppRoutes() {
         <Route path="recetas" element={<ProtectedRoute adminOnly><RecipeEditor /></ProtectedRoute>} />
         <Route path="prode" element={<ProtectedRoute adminOnly><Prode /></ProtectedRoute>} />
         <Route path="tomar-pedido" element={<ProtectedRoute adminOnly><AdminOrder /></ProtectedRoute>} />
+        <Route path="caja-global"  element={<ProtectedRoute adminOnly><CajaGlobal /></ProtectedRoute>} />
+        <Route path="whatsapp" element={<ProtectedRoute adminOnly><WhatsappMessages /></ProtectedRoute>} />
+        <Route path="push" element={<ProtectedRoute adminOnly><PushNotifications /></ProtectedRoute>} />
       </Route>
 
       {/* Cualquier ruta desconocida va a pedido */}

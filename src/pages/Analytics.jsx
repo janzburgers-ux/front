@@ -211,7 +211,7 @@ function DemandTab() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    API.get('/analytics/demand').then(r => setData(r.data)).finally(() => setLoading(false));
+    API.get('/analytics/forecast').then(r => setData(r.data)).finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>;

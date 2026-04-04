@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, ShoppingBag, ChefHat, Package, Beef, Users,
   ShoppingCart, LogOut, BookOpen, UserCog, Menu, X, Ticket,
-  Settings, AlertTriangle, Wallet, BarChart2, Bell, Star, Utensils, PiggyBank, Brain, Smartphone, XCircle, Receipt, FlaskConical, Trophy, Phone
+  Settings, AlertTriangle, Wallet, BarChart2, Bell, Star, Utensils, PiggyBank, Brain, Smartphone, XCircle, Receipt, FlaskConical, Trophy, Phone, MessageSquare, Send, DollarSign
 } from 'lucide-react';
 import API from '../utils/api';
 
@@ -15,7 +15,7 @@ const navGroups = [
       { to: '/gestion/dashboard',   label: 'Dashboard',        icon: LayoutDashboard },
       { to: '/gestion/pedidos',     label: 'Pedidos',          icon: ShoppingBag },
       { to: '/gestion/cocina',      label: 'Cocina',           icon: ChefHat },
-      { to: '/gestion/tomar-pedido', label: 'Tomar Pedido 📞', icon: Phone },
+      { to: '/gestion/tomar-pedido', label: 'Tomar Pedido',    icon: Phone },
     ]
   },
   {
@@ -44,6 +44,7 @@ const navGroups = [
     adminOnly: true,
     items: [
       { to: '/gestion/caja',         label: 'Caja',             icon: Wallet },
+      { to: '/gestion/caja-global',  label: 'Caja Global',      icon: DollarSign },
       { to: '/gestion/finanzas',     label: 'Finanzas',         icon: PiggyBank },
       { to: '/gestion/reportes',     label: 'Reportes',         icon: BarChart2 },
       { to: '/gestion/analytics',    label: 'Inteligencia',     icon: Brain },
@@ -59,6 +60,8 @@ const navGroups = [
       { to: '/gestion/gastos',        label: 'Gastos Variables', icon: Receipt },
       { to: '/gestion/recetas',       label: 'Editor de Recetas',icon: FlaskConical },
       { to: '/gestion/configuracion', label: 'Configuración',    icon: Settings },
+      { to: '/gestion/whatsapp',      label: 'Mensajes WA',      icon: MessageSquare },
+      { to: '/gestion/push',          label: 'Notif. Push',      icon: Send },
     ]
   },
 ];

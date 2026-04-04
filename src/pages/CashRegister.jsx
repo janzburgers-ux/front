@@ -154,7 +154,7 @@ export default function CashRegister() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
 
   const fetchWeekly = () => {
     setLoading(true);

@@ -37,6 +37,7 @@ export default function Config() {
   const [costingParams, setCostingParams] = useState({ avgBurgersPerDay: 30, deliveryCostPerShift: 0 });
   const [hourlyDiscount, setHourlyDiscount] = useState({ enabled: false, discountPercent: 10, fromHour: '18:00', toHour: '20:00', couponCode: 'TEMPRANO' });
   const [orderLimits, setOrderLimits] = useState({ enabled: false, dailyMax: 50 });
+  const [maxOrdersPerSlot, setMaxOrdersPerSlot] = useState(5);
 
   useEffect(() => {
     Promise.all([API.get('/config'), API.get('/auth/users')])
@@ -61,6 +62,9 @@ export default function Config() {
         setFixedExpenses(cfg.fixedExpenses || { luz: 0, gas: 0, agua: 0, alquiler: 0, otros: 0 });
         setCostingParams(cfg.costingParams || { avgBurgersPerDay: 30, deliveryCostPerShift: 0 });
         setUsers(usersRes.data || []);
+        if (cfg.maxOrdersPerSlot) setMaxOrdersPerSlot(cfg.maxOrdersPerSlot);
+        if (cfg.orderLimits) setOrderLimits(cfg.orderLimits);
+        if (cfg.hourlyDiscount) setHourlyDiscount(cfg.hourlyDiscount);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -266,6 +270,36 @@ export default function Config() {
           <button className="btn btn-primary" onClick={saveSchedule} disabled={saving === 'schedule'}>
             <Save size={15} /> {saving === 'schedule' ? 'Guardando...' : 'Guardar horario'}
           </button>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
+
+          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray)', textTransform: 'uppercase', marginBottom: 12 }}>
+            🕐 Límite por slot horario
+          </div>
+          <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: 14 }}>
+            Cuántos pedidos programados puede recibir cada slot de 30 minutos. Cuando se llena, ese horario aparece como "Completo" para el cliente.
+          </p>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+            <div className="form-group" style={{ flex: 1, margin: 0 }}>
+              <label>Máx. pedidos por slot (0 = sin límite)</label>
+              <input
+                type="number" min="0" max="50"
+                value={maxOrdersPerSlot}
+                onChange={e => setMaxOrdersPerSlot(Number(e.target.value))}
+                placeholder="Ej: 5"
+              />
+            </div>
+            <button className="btn btn-primary" onClick={async () => {
+              setSaving('maxSlot');
+              try {
+                await API.put('/config/max-orders-per-slot', { value: maxOrdersPerSlot });
+                toast.success('Límite por slot guardado');
+              } catch { toast.error('Error al guardar'); }
+              finally { setSaving(''); }
+            }} disabled={saving === 'maxSlot'}>
+              <Save size={15} /> {saving === 'maxSlot' ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
         </Section>
 
         {/* ── Zonas de delivery ──────────────────────────────────────────── */}
