@@ -76,6 +76,65 @@ function formatPeriodLabel(view, ref) {
   return ref;
 }
 
+
+// ── Barra de objetivo ─────────────────────────────────────────────────────────
+function GoalBar({ label, icon, current, target, color, format }) {
+  if (!target || target <= 0) return null;
+  const pct     = Math.min(Math.round((current / target) * 100), 100);
+  const over    = current > target;
+  const barColor = pct < 50 ? '#ef4444' : pct < 80 ? '#f59e0b' : pct < 100 ? '#22c55e' : '#E8B84B';
+  const remaining = target - current;
+
+  let message = '';
+  if (over) message = `¡Objetivo superado! 🎉 +${format(current - target)} extra`;
+  else if (pct >= 80) message = `¡Casi llegás! Faltan ${format(remaining)}`;
+  else if (pct >= 50) message = `Vas bien — faltan ${format(remaining)}`;
+  else message = `Recién arrancando — faltan ${format(remaining)}`;
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>{icon} {label}</span>
+        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: over ? '#E8B84B' : 'white' }}>
+          {format(current)} <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>/ {format(target)}</span>
+        </span>
+      </div>
+      <div style={{ height: 8, background: 'rgba(255,255,255,0.06)', borderRadius: 99, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 99, transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)', boxShadow: over ? `0 0 8px ${barColor}` : 'none' }} />
+      </div>
+      <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', marginTop: 5 }}>{message}</div>
+    </div>
+  );
+}
+
+// ── Panel de objetivos ────────────────────────────────────────────────────────
+function GoalPanel({ goals, summary, view }) {
+  const g = goals?.[view === 'finde' ? 'finde' : view === 'mes' ? 'mes' : view === 'año' ? 'año' : 'dia'];
+  const m = summary?.metrics;
+  if (!g || !m) return null;
+
+  const hasAny = Object.values(g).some(v => v > 0);
+  if (!hasAny) return null;
+
+  const fmtMoney  = n => `$${Number(n || 0).toLocaleString('es-AR')}`;
+  const fmtNum    = n => String(Math.round(n || 0));
+
+  return (
+    <div style={{ background: '#0f0f0f', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '18px 20px', marginBottom: 20 }}>
+      <div style={{ fontSize: '0.65rem', fontWeight: 800, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 16 }}>
+        🎯 Objetivos del período
+      </div>
+      <GoalBar label="Recaudación"         icon="💰" current={summary.sales.total}   target={g.money}            color="#E8B84B" format={fmtMoney} />
+      <GoalBar label="Hamburguesas"        icon="🍔" current={m.burgersCount}         target={g.burgers}          color="#f59e0b" format={fmtNum} />
+      <GoalBar label="Pedidos"             icon="📦" current={m.ordersCount}          target={g.orders}           color="#818cf8" format={fmtNum} />
+      <GoalBar label="Clientes nuevos"     icon="👤" current={m.newClients}           target={g.newClients}       color="#22c55e" format={fmtNum} />
+      <GoalBar label="Clientes recurrentes" icon="🔁" current={m.returningClients}   target={g.returningClients} color="#06b6d4" format={fmtNum} />
+      <GoalBar label="Ticket promedio"     icon="⭐" current={m.avgTicket}            target={g.avgTicket}        color="#ec4899" format={fmtMoney} />
+      <GoalBar label="Cupones canjeados"   icon="🏷️" current={m.couponsCount}        target={g.coupons}          color="#a78bfa" format={fmtNum} />
+    </div>
+  );
+}
+
 // ── Modal de nuevo movimiento ─────────────────────────────────────────────────
 function MovModal({ members, defaultDate, onClose, onCreated }) {
   const [form, setForm] = useState({
@@ -299,20 +358,23 @@ export default function CajaGlobal() {
   const [movLoading, setMovLoading] = useState(true);
 
   const [showMov,     setShowMov]     = useState(false);
+  const [goals,       setGoals]       = useState(null);
   const [showMembers, setShowMembers] = useState(false);
   const [deleting,    setDeleting]    = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setMovLoading(true);
     try {
-      const [sumRes, movRes, memRes] = await Promise.all([
+      const [sumRes, movRes, memRes, goalRes] = await Promise.all([
         API.get(`/cash-movements/summary?view=${view}&ref=${ref}`),
         API.get(`/cash-movements/movements?view=${view}&ref=${ref}`),
         API.get('/cash-movements/members'),
+        API.get('/config/public').catch(() => ({ data: {} }))
       ]);
       setSummary(sumRes.data);
       setMovements(movRes.data);
       setMembers(memRes.data);
+      if (goalRes.data?.cajaGoals) setGoals(goalRes.data.cajaGoals);
     } catch (e) { toast.error('Error al cargar datos'); }
     finally { setLoading(false); setMovLoading(false); }
   }, [view, ref]);
@@ -416,6 +478,9 @@ export default function CajaGlobal() {
                 </div>
               ))}
             </div>
+
+            {/* Objetivos */}
+            <GoalPanel goals={goals} summary={s} view={view} />
 
             {/* Panel de integrantes */}
             {s.membersStatus?.length > 0 && (

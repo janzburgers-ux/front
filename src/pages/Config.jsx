@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import API from '../utils/api';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, Save, MapPin, Clock, CreditCard, Users, Star, DollarSign, FileText, Lock } from 'lucide-react';
+import { Plus, Trash2, Save, MapPin, Clock, CreditCard, Users, Star, DollarSign, FileText, Lock, Target, MessageCircle, Zap, Calendar } from 'lucide-react';
 
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const fmt = n => `$${Number(n || 0).toLocaleString('es-AR')}`;
@@ -39,9 +39,38 @@ export default function Config() {
   const [orderLimits, setOrderLimits] = useState({ enabled: false, dailyMax: 50 });
   const [maxOrdersPerSlot, setMaxOrdersPerSlot] = useState(5);
 
+  // ── Objetivos de Caja ─────────────────────────────────────────────────────
+  const [cajaGoals, setCajaGoals] = useState({
+    dia:   { money: 0, burgers: 0, orders: 0, newClients: 0, returningClients: 0, avgTicket: 0, coupons: 0 },
+    finde: { money: 0, burgers: 0, orders: 0, newClients: 0, returningClients: 0, avgTicket: 0, coupons: 0 },
+    mes:   { money: 0, burgers: 0, orders: 0, newClients: 0, returningClients: 0, avgTicket: 0, coupons: 0 },
+    año:   { money: 0, burgers: 0, orders: 0, newClients: 0, returningClients: 0, avgTicket: 0, coupons: 0 }
+  });
+
+  // ── Sistema de reseñas ────────────────────────────────────────────────────
+  const [reviewSettings, setReviewSettings] = useState({
+    enabled: true, incentiveType: 'discount', discountPercent: 10,
+    productId: null, productName: 'Papas fritas', validDays: 30, waitMinutes: 10
+  });
+  const [products, setProducts] = useState([]);
+
+  // ── Hamburguesa del día ───────────────────────────────────────────────────
+  const [dailyDeal, setDailyDeal] = useState({
+    enabled: false, name: '', description: '', originalPrice: 0,
+    discountPrice: 0, discountPercent: 0, fromHour: '19:00', toHour: '21:00',
+    image: '', productId: null
+  });
+
+  // ── Hamburguesa del mes ───────────────────────────────────────────────────
+  const [monthlyBurger, setMonthlyBurger] = useState({
+    enabled: false, name: '', description: '', price: 0,
+    image: '', badge: '🏆 Del mes', month: ''
+  });
+
   useEffect(() => {
-    Promise.all([API.get('/config'), API.get('/auth/users')])
-      .then(([cfgRes, usersRes]) => {
+    Promise.all([API.get('/config'), API.get('/auth/users'), API.get('/products').catch(() => ({ data: [] }))])
+      .then(([cfgRes, usersRes, prodRes]) => {
+        setProducts(prodRes.data || []);
         const cfg = cfgRes.data;
         setConfig(cfg);
         setAlias(cfg.transferAlias || '');
@@ -65,6 +94,10 @@ export default function Config() {
         if (cfg.maxOrdersPerSlot) setMaxOrdersPerSlot(cfg.maxOrdersPerSlot);
         if (cfg.orderLimits) setOrderLimits(cfg.orderLimits);
         if (cfg.hourlyDiscount) setHourlyDiscount(cfg.hourlyDiscount);
+        if (cfg.cajaGoals) setCajaGoals(cfg.cajaGoals);
+        if (cfg.reviewSettings) setReviewSettings(cfg.reviewSettings);
+        if (cfg.dailyDeal) setDailyDeal(cfg.dailyDeal);
+        if (cfg.monthlyBurger) setMonthlyBurger(cfg.monthlyBurger);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -664,6 +697,285 @@ export default function Config() {
             finally { setSaving(''); }
           }} disabled={saving === 'orderLimits'}>
             <Save size={15} /> {saving === 'orderLimits' ? 'Guardando...' : 'Guardar límites'}
+          </button>
+        </Section>
+
+
+        {/* ── Objetivos de Caja ───────────────────────────────────────────── */}
+        <Section title="Objetivos de Caja" icon={Target}>
+          <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: 20 }}>
+            Definí metas por período. Las que quedes en 0 no se muestran en Caja Global.
+          </p>
+          {[
+            { key: 'dia',   label: '📅 Por día' },
+            { key: 'finde', label: '🍔 Por finde (Vie–Dom)' },
+            { key: 'mes',   label: '📆 Por mes' },
+            { key: 'año',   label: '🗓️ Por año' },
+          ].map(({ key, label }) => (
+            <div key={key} style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--gold)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>{label}</div>
+              <div className="grid-2" style={{ marginBottom: 0 }}>
+                {[
+                  { field: 'money',            label: '💰 Recaudación ($)',      type: 'number' },
+                  { field: 'burgers',          label: '🍔 Hamburguesas',         type: 'number' },
+                  { field: 'orders',           label: '📦 Pedidos',              type: 'number' },
+                  { field: 'newClients',       label: '👤 Clientes nuevos',      type: 'number' },
+                  { field: 'returningClients', label: '🔁 Clientes recurrentes', type: 'number' },
+                  { field: 'avgTicket',        label: '⭐ Ticket promedio ($)',   type: 'number' },
+                  { field: 'coupons',          label: '🏷️ Cupones canjeados',    type: 'number' },
+                ].map(({ field, label: lbl }) => (
+                  <div key={field}>
+                    <label className="form-label">{lbl}</label>
+                    <input type="number" min={0}
+                      value={cajaGoals[key]?.[field] || 0}
+                      onChange={e => setCajaGoals(g => ({ ...g, [key]: { ...g[key], [field]: Number(e.target.value) } }))}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          <button className="btn btn-primary" disabled={saving === 'cajaGoals'}
+            onClick={async () => {
+              setSaving('cajaGoals');
+              try { await API.put('/config/cajaGoals', { value: cajaGoals }); toast.success('Objetivos guardados'); }
+              catch { toast.error('Error al guardar'); }
+              finally { setSaving(''); }
+            }}>
+            <Save size={15} /> {saving === 'cajaGoals' ? 'Guardando...' : 'Guardar objetivos'}
+          </button>
+        </Section>
+
+        {/* ── Sistema de reseñas ──────────────────────────────────────────── */}
+        <Section title="Sistema de reseñas" icon={MessageCircle}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, padding: '14px 16px', background: 'var(--dark)', borderRadius: 10, border: `1px solid ${reviewSettings.enabled ? 'rgba(232,184,75,0.3)' : 'var(--border)'}` }}>
+            <div>
+              <div style={{ fontWeight: 700, color: reviewSettings.enabled ? 'var(--gold)' : 'var(--gray)', marginBottom: 2 }}>
+                {reviewSettings.enabled ? '🟢 Activo' : '⚪ Inactivo'}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>
+                {reviewSettings.enabled ? 'Se envía WhatsApp automático al entregar cada pedido' : 'No se solicitan reseñas'}
+              </div>
+            </div>
+            <button className={`btn btn-sm ${reviewSettings.enabled ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setReviewSettings(r => ({ ...r, enabled: !r.enabled }))}>
+              {reviewSettings.enabled ? 'Desactivar' : 'Activar'}
+            </button>
+          </div>
+
+          <div style={{ opacity: reviewSettings.enabled ? 1 : 0.4, pointerEvents: reviewSettings.enabled ? 'auto' : 'none' }}>
+            <div className="grid-2" style={{ marginBottom: 16 }}>
+              <div>
+                <label className="form-label">⏱️ Minutos de espera post-entrega</label>
+                <input type="number" min={1} max={120} value={reviewSettings.waitMinutes}
+                  onChange={e => setReviewSettings(r => ({ ...r, waitMinutes: Number(e.target.value) }))} />
+                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4 }}>Tiempo que espera antes de mandar el WA</div>
+              </div>
+              <div>
+                <label className="form-label">🎁 Tipo de incentivo</label>
+                <select value={reviewSettings.incentiveType}
+                  onChange={e => setReviewSettings(r => ({ ...r, incentiveType: e.target.value }))}
+                  style={{ width: '100%' }}>
+                  <option value="discount">% Descuento en próximo pedido</option>
+                  <option value="product">Producto gratis</option>
+                  <option value="none">Sin incentivo</option>
+                </select>
+              </div>
+            </div>
+
+            {reviewSettings.incentiveType === 'discount' && (
+              <div className="grid-2" style={{ marginBottom: 16 }}>
+                <div>
+                  <label className="form-label">% de descuento</label>
+                  <input type="number" min={1} max={50} value={reviewSettings.discountPercent}
+                    onChange={e => setReviewSettings(r => ({ ...r, discountPercent: Number(e.target.value) }))} />
+                </div>
+                <div>
+                  <label className="form-label">Validez del cupón (días)</label>
+                  <input type="number" min={1} max={365} value={reviewSettings.validDays}
+                    onChange={e => setReviewSettings(r => ({ ...r, validDays: Number(e.target.value) }))} />
+                </div>
+              </div>
+            )}
+
+            {reviewSettings.incentiveType === 'product' && (
+              <div className="grid-2" style={{ marginBottom: 16 }}>
+                <div>
+                  <label className="form-label">Producto gratis</label>
+                  <select value={reviewSettings.productId || ''}
+                    onChange={e => {
+                      const p = products.find(x => x._id === e.target.value);
+                      setReviewSettings(r => ({ ...r, productId: e.target.value, productName: p ? `${p.name} ${p.variant}` : r.productName }));
+                    }}
+                    style={{ width: '100%' }}>
+                    <option value="">Seleccionar producto...</option>
+                    {products.map(p => <option key={p._id} value={p._id}>{p.name} {p.variant} — {fmt(p.salePrice)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label">Validez del cupón (días)</label>
+                  <input type="number" min={1} max={365} value={reviewSettings.validDays}
+                    onChange={e => setReviewSettings(r => ({ ...r, validDays: Number(e.target.value) }))} />
+                </div>
+              </div>
+            )}
+
+            <div style={{ padding: '12px 14px', background: 'rgba(232,184,75,0.06)', border: '1px solid rgba(232,184,75,0.15)', borderRadius: 10, fontSize: '0.82rem', color: 'var(--gray)', marginBottom: 16 }}>
+              💡 <strong style={{ color: 'var(--gold)' }}>Flujo automático:</strong> Pedido entregado → espera {reviewSettings.waitMinutes} min → WA al cliente → cliente califica → {reviewSettings.incentiveType === 'none' ? 'agradecimiento' : 'cupón generado automáticamente'}.
+            </div>
+          </div>
+
+          <button className="btn btn-primary" disabled={saving === 'review'}
+            onClick={async () => {
+              setSaving('review');
+              try { await API.put('/config/reviewSettings', { value: reviewSettings }); toast.success('Configuración de reseñas guardada'); }
+              catch { toast.error('Error al guardar'); }
+              finally { setSaving(''); }
+            }}>
+            <Save size={15} /> {saving === 'review' ? 'Guardando...' : 'Guardar reseñas'}
+          </button>
+        </Section>
+
+        {/* ── Hamburguesa del día ──────────────────────────────────────────── */}
+        <Section title="Hamburguesa del día (promo con countdown)" icon={Zap}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, padding: '14px 16px', background: 'var(--dark)', borderRadius: 10, border: `1px solid ${dailyDeal.enabled ? 'rgba(232,184,75,0.3)' : 'var(--border)'}` }}>
+            <div>
+              <div style={{ fontWeight: 700, color: dailyDeal.enabled ? 'var(--gold)' : 'var(--gray)', marginBottom: 2 }}>
+                {dailyDeal.enabled ? '🟢 Visible en el menú' : '⚪ Oculta'}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Aparece como banner destacado en /pedido con countdown</div>
+            </div>
+            <button className={`btn btn-sm ${dailyDeal.enabled ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setDailyDeal(d => ({ ...d, enabled: !d.enabled }))}>
+              {dailyDeal.enabled ? 'Desactivar' : 'Activar'}
+            </button>
+          </div>
+
+          <div style={{ opacity: dailyDeal.enabled ? 1 : 0.5, pointerEvents: dailyDeal.enabled ? 'auto' : 'none' }}>
+            <div className="grid-2" style={{ marginBottom: 14 }}>
+              <div>
+                <label className="form-label">Nombre de la promo</label>
+                <input value={dailyDeal.name} onChange={e => setDailyDeal(d => ({ ...d, name: e.target.value }))} placeholder="Ej: CAVA del día" />
+              </div>
+              <div>
+                <label className="form-label">Vincular a producto (opcional)</label>
+                <select value={dailyDeal.productId || ''} onChange={e => setDailyDeal(d => ({ ...d, productId: e.target.value || null }))} style={{ width: '100%' }}>
+                  <option value="">Sin producto vinculado</option>
+                  {products.map(p => <option key={p._id} value={p._id}>{p.name} {p.variant}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label className="form-label">Descripción</label>
+              <input value={dailyDeal.description} onChange={e => setDailyDeal(d => ({ ...d, description: e.target.value }))} placeholder="Ej: Doble cheddar + panceta + salsa especial" />
+            </div>
+            <div className="grid-2" style={{ marginBottom: 14 }}>
+              <div>
+                <label className="form-label">Precio original ($)</label>
+                <input type="number" min={0} value={dailyDeal.originalPrice}
+                  onChange={e => {
+                    const orig = Number(e.target.value);
+                    const disc = dailyDeal.discountPrice;
+                    const pct  = orig > 0 && disc < orig ? Math.round((1 - disc / orig) * 100) : 0;
+                    setDailyDeal(d => ({ ...d, originalPrice: orig, discountPercent: pct }));
+                  }} />
+              </div>
+              <div>
+                <label className="form-label">Precio con descuento ($)</label>
+                <input type="number" min={0} value={dailyDeal.discountPrice}
+                  onChange={e => {
+                    const disc = Number(e.target.value);
+                    const orig = dailyDeal.originalPrice;
+                    const pct  = orig > 0 && disc < orig ? Math.round((1 - disc / orig) * 100) : 0;
+                    setDailyDeal(d => ({ ...d, discountPrice: disc, discountPercent: pct }));
+                  }} />
+              </div>
+            </div>
+            {dailyDeal.discountPercent > 0 && (
+              <div style={{ fontSize: '0.82rem', color: '#22c55e', marginBottom: 14, fontWeight: 600 }}>
+                ✅ {dailyDeal.discountPercent}% de descuento — el cliente ahorra {fmt(dailyDeal.originalPrice - dailyDeal.discountPrice)}
+              </div>
+            )}
+            <div className="grid-2" style={{ marginBottom: 14 }}>
+              <div>
+                <label className="form-label">⏰ Válida desde</label>
+                <input type="time" value={dailyDeal.fromHour} onChange={e => setDailyDeal(d => ({ ...d, fromHour: e.target.value }))} />
+              </div>
+              <div>
+                <label className="form-label">⏰ Válida hasta</label>
+                <input type="time" value={dailyDeal.toHour} onChange={e => setDailyDeal(d => ({ ...d, toHour: e.target.value }))} />
+              </div>
+            </div>
+          </div>
+
+          <button className="btn btn-primary" disabled={saving === 'dailyDeal'}
+            onClick={async () => {
+              setSaving('dailyDeal');
+              try { await API.put('/config/dailyDeal', { value: dailyDeal }); toast.success('Promo del día guardada'); }
+              catch { toast.error('Error al guardar'); }
+              finally { setSaving(''); }
+            }}>
+            <Save size={15} /> {saving === 'dailyDeal' ? 'Guardando...' : 'Guardar promo del día'}
+          </button>
+        </Section>
+
+        {/* ── Hamburguesa del mes ──────────────────────────────────────────── */}
+        <Section title="Hamburguesa del mes" icon={Calendar}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, padding: '14px 16px', background: 'var(--dark)', borderRadius: 10, border: `1px solid ${monthlyBurger.enabled ? 'rgba(129,140,248,0.3)' : 'var(--border)'}` }}>
+            <div>
+              <div style={{ fontWeight: 700, color: monthlyBurger.enabled ? '#818cf8' : 'var(--gray)', marginBottom: 2 }}>
+                {monthlyBurger.enabled ? '🟢 Visible como sección especial' : '⚪ Oculta'}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Aparece como sección destacada al tope del menú</div>
+            </div>
+            <button className={`btn btn-sm ${monthlyBurger.enabled ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setMonthlyBurger(m => ({ ...m, enabled: !m.enabled }))}>
+              {monthlyBurger.enabled ? 'Desactivar' : 'Activar'}
+            </button>
+          </div>
+
+          <div style={{ opacity: monthlyBurger.enabled ? 1 : 0.5, pointerEvents: monthlyBurger.enabled ? 'auto' : 'none' }}>
+            <div className="grid-2" style={{ marginBottom: 14 }}>
+              <div>
+                <label className="form-label">Nombre</label>
+                <input value={monthlyBurger.name} onChange={e => setMonthlyBurger(m => ({ ...m, name: e.target.value }))} placeholder="Ej: La Abril — BBQ Ahumada" />
+              </div>
+              <div>
+                <label className="form-label">Precio ($)</label>
+                <input type="number" min={0} value={monthlyBurger.price} onChange={e => setMonthlyBurger(m => ({ ...m, price: Number(e.target.value) }))} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label className="form-label">Descripción</label>
+              <textarea rows={2} value={monthlyBurger.description}
+                onChange={e => setMonthlyBurger(m => ({ ...m, description: e.target.value }))}
+                placeholder="Ingredientes y características especiales..."
+                style={{ width: '100%', resize: 'vertical' }} />
+            </div>
+            <div className="grid-2" style={{ marginBottom: 14 }}>
+              <div>
+                <label className="form-label">Badge</label>
+                <input value={monthlyBurger.badge} onChange={e => setMonthlyBurger(m => ({ ...m, badge: e.target.value }))} placeholder="🏆 Del mes" />
+              </div>
+              <div>
+                <label className="form-label">Mes (ej: Abril 2026)</label>
+                <input value={monthlyBurger.month} onChange={e => setMonthlyBurger(m => ({ ...m, month: e.target.value }))} placeholder="Abril 2026" />
+              </div>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label className="form-label">URL de imagen (opcional)</label>
+              <input value={monthlyBurger.image} onChange={e => setMonthlyBurger(m => ({ ...m, image: e.target.value }))} placeholder="https://res.cloudinary.com/..." />
+            </div>
+          </div>
+
+          <button className="btn btn-primary" disabled={saving === 'monthly'}
+            onClick={async () => {
+              setSaving('monthly');
+              try { await API.put('/config/monthlyBurger', { value: monthlyBurger }); toast.success('Hamburguesa del mes guardada'); }
+              catch { toast.error('Error al guardar'); }
+              finally { setSaving(''); }
+            }}>
+            <Save size={15} /> {saving === 'monthly' ? 'Guardando...' : 'Guardar hamburguesa del mes'}
           </button>
         </Section>
 

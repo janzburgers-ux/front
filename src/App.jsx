@@ -32,6 +32,8 @@ import AdminOrder from './pages/AdminOrder';
 import CajaGlobal from './pages/CajaGlobal';
 import WhatsappMessages from './pages/WhatsappMessages';
 import PushNotifications from './pages/PushNotifications';
+import PublicReview from './pages/PublicReview';
+import Reviews from './pages/Reviews';
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth();
@@ -49,6 +51,7 @@ function AppRoutes() {
       <Route path="/" element={<Navigate to="/pedido" replace />} />
       <Route path="/pedido" element={<PublicOrder />} />
       <Route path="/prode-publico" element={<PublicProde />} />
+      <Route path="/resena/:publicCode" element={<PublicReview />} />
 
       {/* Login de gestión */}
       <Route path="/gestion/login" element={user ? <Navigate to="/gestion/dashboard" /> : <Login />} />
@@ -79,12 +82,12 @@ function AppRoutes() {
         <Route path="recetas" element={<ProtectedRoute adminOnly><RecipeEditor /></ProtectedRoute>} />
         <Route path="prode" element={<ProtectedRoute adminOnly><Prode /></ProtectedRoute>} />
         <Route path="tomar-pedido" element={<ProtectedRoute adminOnly><AdminOrder /></ProtectedRoute>} />
-        <Route path="caja-global"  element={<ProtectedRoute adminOnly><CajaGlobal /></ProtectedRoute>} />
+        <Route path="caja-global" element={<ProtectedRoute adminOnly><CajaGlobal /></ProtectedRoute>} />
         <Route path="whatsapp" element={<ProtectedRoute adminOnly><WhatsappMessages /></ProtectedRoute>} />
         <Route path="push" element={<ProtectedRoute adminOnly><PushNotifications /></ProtectedRoute>} />
+        <Route path="resenas" element={<ProtectedRoute adminOnly><Reviews /></ProtectedRoute>} />
       </Route>
 
-      {/* Cualquier ruta desconocida va a pedido */}
       <Route path="*" element={<Navigate to="/pedido" replace />} />
     </Routes>
   );

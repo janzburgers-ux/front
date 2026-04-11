@@ -217,25 +217,33 @@ export default function PublicOrder() {
   const [scheduledFor, setScheduledFor]                 = useState('asap');
   const [hourlyDiscount, setHourlyDiscount]             = useState(null);
   const [showConfirmModal, setShowConfirmModal]         = useState(false);
+  const [submitSuccess, setSubmitSuccess]               = useState(false);
   const [pendingOrderCode, setPendingOrderCode]         = useState(() => { try { return localStorage.getItem('janz_pending_order') || null; } catch { return null; } });
   const [prodeEnabled, setProdeEnabled]                 = useState(false);
   const [clientId, setClientId]                         = useState(null);
   const [schedule, setSchedule]                         = useState({ openHour: '19:00', closeHour: '23:00', days: [] });
   const [currentTime, setCurrentTime]                   = useState('');
   const [inDiscountWindow, setInDiscountWindow]         = useState(false);
+  const [dailyDeal, setDailyDeal]                       = useState(null);
+  const [monthlyBurger, setMonthlyBurger]               = useState(null);
+  const [pushGranted, setPushGranted]                   = useState(false);
+  const [countdown, setCountdown]                       = useState('');
   const [activeSection, setActiveSection]               = useState('burgers');
-  // Disponibilidad de slots: { '20:00': 3, '20:30': 5 } — cuántos pedidos hay por slot
   const [slotOccupancy, setSlotOccupancy]               = useState({});
   const [maxOrdersPerSlot, setMaxOrdersPerSlot]         = useState(5);
   const sectionRefs = useRef({});
   const socketRef = useRef(null);
+  const isSubmittingRef = useRef(false);
 
+  // ── useEffect 1: carga inicial del menú y config ──────────────────────────
   useEffect(() => {
     API.get('/public/menu').then(r => {
       setMenu(r.data.menu || {}); setOpen(r.data.open);
       setAvailableAdditionals(r.data.additionals || []); setZones(r.data.zones || []);
       if (r.data.limits) setLimits(r.data.limits);
       if (r.data.businessWhatsapp) setBusinessWhatsapp(r.data.businessWhatsapp);
+      if (r.data.dailyDeal) setDailyDeal(r.data.dailyDeal);
+      if (r.data.monthlyBurger) setMonthlyBurger(r.data.monthlyBurger);
     }).catch(() => setSystemDown(true)).finally(() => setLoading(false));
     const params = new URLSearchParams(window.location.search);
     const cid = params.get('clientId');
@@ -248,13 +256,13 @@ export default function PublicOrder() {
       if (r.data.schedule) setSchedule({ ...r.data.schedule, days: r.data.schedule.days || [] });
       if (r.data.maxOrdersPerSlot) setMaxOrdersPerSlot(r.data.maxOrdersPerSlot);
     }).catch(() => {});
-    // Cargar ocupación de slots
     API.get('/public/slots-availability').then(r => {
       setSlotOccupancy(r.data.occupancy || {});
       if (r.data.maxOrdersPerSlot) setMaxOrdersPerSlot(r.data.maxOrdersPerSlot);
     }).catch(() => {});
   }, []);
 
+  // ── useEffect 2: reloj / ventana de descuento ─────────────────────────────
   useEffect(() => {
     const tick = () => {
       const ar = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
@@ -266,6 +274,7 @@ export default function PublicOrder() {
     tick(); const id = setInterval(tick, 10000); return () => clearInterval(id);
   }, [hourlyDiscount]);
 
+  // ── useEffect 3: socket tracking ─────────────────────────────────────────
   useEffect(() => {
     if (step !== 'tracking' || !orderResult?.orderNumber) return;
     const apiUrl = (process.env.REACT_APP_API_URL || 'http://localhost:5000/api').replace('/api', '');
@@ -280,6 +289,7 @@ export default function PublicOrder() {
     return () => socket.disconnect();
   }, [step, orderResult?.orderNumber]);
 
+  // ── useEffect 4: intersection observer para nav ───────────────────────────
   useEffect(() => {
     if (step !== 'menu') return;
     const observer = new IntersectionObserver(entries => {
@@ -289,16 +299,7 @@ export default function PublicOrder() {
     return () => observer.disconnect();
   }, [step, menu]);
 
-  const scrollToSection = (section) => {
-    const el = sectionRefs.current[section];
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  const subtotalBruto = cart.reduce((s, i) => s + itemTotal(i), 0);
-  const activeDiscountPercent = couponStatus?.valid ? couponStatus.discountPercent : (inDiscountWindow && hourlyDiscount?.enabled ? hourlyDiscount.discountPercent : 0);
-  const discount = activeDiscountPercent > 0 ? Math.round(subtotalBruto * activeDiscountPercent / 100) : 0;
-  const subtotalConDescuento = subtotalBruto - discount;
-
+  // ── useEffect 5: costo de delivery ───────────────────────────────────────
   useEffect(() => {
     if (!selectedZone || deliveryType !== 'delivery') { setDeliveryCost(0); return; }
     const zone = zones.find(z => z.id === selectedZone);
@@ -309,7 +310,37 @@ export default function PublicOrder() {
   // eslint-disable-next-line
   }, [selectedZone, cart, deliveryType, zones, couponStatus, inDiscountWindow, hourlyDiscount]);
 
+  // ── useEffect 6: countdown promo del día ─────────────────────────────────
+  // ✅ MOVIDO AQUÍ — antes estaba DEBAJO del return condicional del stepper,
+  //    lo que causaba "Rendered more hooks than during the previous render"
+  useEffect(() => {
+    if (!dailyDeal?.toHour) return;
+    const tick = () => {
+      const ar = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
+      const [h, m] = dailyDeal.toHour.split(':').map(Number);
+      const end = new Date(ar); end.setHours(h, m, 0, 0);
+      const diff = end - ar;
+      if (diff <= 0) { setCountdown(''); return; }
+      const hh = Math.floor(diff / 3600000);
+      const mm = Math.floor((diff % 3600000) / 60000);
+      const ss = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${hh > 0 ? hh + 'h ' : ''}${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`);
+    };
+    tick(); const id = setInterval(tick, 1000); return () => clearInterval(id);
+  }, [dailyDeal]);
+
+  // ── Cálculos derivados ────────────────────────────────────────────────────
+  const subtotalBruto = cart.reduce((s, i) => s + itemTotal(i), 0);
+  const activeDiscountPercent = couponStatus?.valid ? couponStatus.discountPercent : (inDiscountWindow && hourlyDiscount?.enabled ? hourlyDiscount.discountPercent : 0);
+  const discount = activeDiscountPercent > 0 ? Math.round(subtotalBruto * activeDiscountPercent / 100) : 0;
+  const subtotalConDescuento = subtotalBruto - discount;
   const totalFinal = subtotalConDescuento + (deliveryType === 'delivery' ? deliveryCost : 0);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  const scrollToSection = (section) => {
+    const el = sectionRefs.current[section];
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const handleAddToCart = (product) => {
     const existing = cart.find(i => i.product === product._id);
@@ -369,7 +400,10 @@ export default function PublicOrder() {
   };
 
   const doSubmit = async () => {
-    setShowConfirmModal(false); setSubmitting(true);
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setShowConfirmModal(false);
+    setSubmitting(true);        // ← el modal aparece acá, antes de la llamada al backend
     try {
       const res = await API.post('/public/order', {
         client, items: cart.map(i => ({ product: i.product, quantity: i.quantity, additionals: (i.additionals || []).map(a => ({ additional: a.additional, quantity: a.quantity })) })),
@@ -381,35 +415,61 @@ export default function PublicOrder() {
       try { localStorage.setItem('janz_client_data', JSON.stringify({ name: client.name, whatsapp: client.whatsapp, address: client.address, floor: client.floor, references: client.references })); } catch {}
       try { localStorage.setItem('janz_pending_order', res.data.publicCode || res.data.orderNumber); } catch {}
       setPendingOrderCode(res.data.publicCode || res.data.orderNumber);
-      setOrderResult(res.data); setOrderStatus('pending'); setStep('tracking');
-    } catch (e) { toast.error(e.response?.data?.message || 'Error al enviar pedido'); }
-    finally { setSubmitting(false); }
+      setOrderResult(res.data); setOrderStatus('pending');
+      setSubmitting(false);
+      setSubmitSuccess(true);   // ← cambia el modal a "gracias"
+      setTimeout(() => { setSubmitSuccess(false); setStep('tracking'); }, 2500);
+    } catch (e) {
+      setSubmitting(false);
+      toast.error(e.response?.data?.message || 'Error al enviar pedido');
+    } finally {
+      isSubmittingRef.current = false;
+    }
   };
 
   const closeWelcome = () => { try { localStorage.setItem('janz_visited', '1'); } catch {} setShowWelcome(false); };
+
+  const requestPushPermission = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') return;
+      const reg = await navigator.serviceWorker.ready;
+      const vapidKey = process.env.REACT_APP_VAPID_PUBLIC_KEY;
+      if (!vapidKey) return;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey)
+      });
+      await API.post('/push/subscribe', { subscription: sub, userAgent: navigator.userAgent });
+      setPushGranted(true);
+    } catch (e) { console.warn('Push subscription failed:', e); }
+  };
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+  }
 
   const getZoneCost = (zone) => { const isFree = zone.freeFrom > 0 && subtotalConDescuento >= zone.freeFrom; return isFree ? 0 : zone.cost || 0; };
   const amountLeftForFree = (zone) => { if (!zone.freeFrom || zone.freeFrom === 0) return null; const diff = zone.freeFrom - subtotalConDescuento; return diff > 0 ? diff : null; };
 
   const parseTime = v => { if (typeof v === 'string' && v.includes(':')) { const [h, m] = v.split(':').map(Number); return { h: h || 0, m: m || 0 }; } return { h: Number(v) || 0, m: 0 }; };
 
-  // ── Generar slots filtrando: ya pasados + saturados ────────────────────────
   const getSlots = () => {
     const op = parseTime(schedule.openHour);
     const cl = parseTime(schedule.closeHour);
     const openMins = (op.h || 19) * 60 + op.m;
     const closeMins = (cl.h || 23) * 60 + cl.m;
-
-    // Hora actual AR en minutos
     let nowMins = 0;
     if (currentTime) {
       const [hh, mm] = currentTime.split(':').map(Number);
       nowMins = hh * 60 + mm;
     }
-
     const slots = [];
     for (let mins = openMins; mins < closeMins; mins += 30) {
-      // Filtrar slots ya pasados (con margen de 15 minutos para que tenga sentido pedirlo)
       if (mins <= nowMins + 15) continue;
       const hh = String(Math.floor(mins / 60)).padStart(2, '0');
       const mm = String(mins % 60).padStart(2, '0');
@@ -420,6 +480,8 @@ export default function PublicOrder() {
     }
     return slots;
   };
+
+  // ── Returns condicionales — TODOS los hooks ya fueron llamados arriba ──────
 
   if (loading) return <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="spinner" /></div>;
 
@@ -513,6 +575,10 @@ export default function PublicOrder() {
     .nav-pill.active { background: #E8B84B; color: #000; border-color: #E8B84B; }
     .slot-btn { padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 0.82rem; transition: all 0.2s; font-family: inherit; }
     .slot-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.6 } }
+    @keyframes fadeInUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } }
+    .deal-badge { animation: pulse 2s ease-in-out infinite; }
     .step-wrap { max-width: 480px; width: 100%; margin: 0 auto; padding: 28px 20px 140px; }
     @media (min-width: 900px) {
       .janz-hero { height: 340px; }
@@ -591,6 +657,28 @@ export default function PublicOrder() {
         <style>{css}</style>
         <StepperBar currentStep={step} onBack={handleBack} />
 
+        {(submitting || submitSuccess) && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400, padding: 24 }}>
+            <div style={{ background: '#0f0f0f', borderRadius: 20, width: '100%', maxWidth: 360, padding: '40px 32px', border: `1px solid ${submitSuccess ? 'rgba(34,197,94,0.3)' : 'rgba(232,184,75,0.15)'}`, textAlign: 'center' }}>
+              {submitSuccess ? (
+                <>
+                  <div style={{ fontSize: '3rem', marginBottom: 16 }}>🍔</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#22c55e', marginBottom: 10, lineHeight: 1.3 }}>¡Pedido recibido!</div>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                    Muchas gracias. En breve<br />te confirmamos por WhatsApp 📱
+                  </div>
+                </>
+              ) : (
+                <>
+                  <img src={logoJanz} alt="Janz" style={{ height: 44, objectFit: 'contain', marginBottom: 24, opacity: 0.9 }} />
+                  <div style={{ width: 48, height: 48, border: '3px solid rgba(255,255,255,0.08)', borderTopColor: GOLD, borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 20px' }} />
+                  <div style={{ fontWeight: 700, color: 'rgba(255,255,255,0.6)', fontSize: '0.95rem' }}>Enviando tu pedido...</div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {showConfirmModal && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 300 }}>
             <div style={{ background: '#0f0f0f', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 520, padding: 24, maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderBottom: 'none' }}>
@@ -615,7 +703,9 @@ export default function PublicOrder() {
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
                 <button onClick={() => setShowConfirmModal(false)} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: '#666', border: '1px solid rgba(255,255,255,0.08)', padding: '13px', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>← Corregir</button>
-                <button onClick={doSubmit} disabled={submitting} style={{ flex: 2, background: submitting ? '#222' : GOLD, color: submitting ? '#555' : '#000', border: 'none', padding: '13px', borderRadius: 10, fontWeight: 800, cursor: submitting ? 'not-allowed' : 'pointer', fontSize: '0.95rem' }}>{submitting ? 'Enviando...' : '✅ Sí, confirmar pedido'}</button>
+                <button onClick={doSubmit} disabled={submitting} style={{ flex: 2, background: submitting ? '#1a1a1a' : GOLD, color: submitting ? '#555' : '#000', border: 'none', padding: '13px', borderRadius: 10, fontWeight: 800, cursor: submitting ? 'not-allowed' : 'pointer', fontSize: '0.95rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  {submitting ? (<><div style={{ width: 16, height: 16, border: '2px solid #333', borderTopColor: GOLD, borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} /> Enviando...</>) : '✅ Sí, confirmar pedido'}
+                </button>
               </div>
             </div>
           </div>
@@ -809,9 +899,9 @@ export default function PublicOrder() {
                 <span style={{ fontSize: '0.75rem', color: open ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{open ? '● Abierto' : '● Cerrado'}</span>
                 {schedule.days && schedule.days.length > 0 && (() => {
                   const DAY_NAMES = ['Domingos', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábados'];
-const ORDER = [1, 2, 3, 4, 5, 6, 0]; // Lunes primero, Domingo al final
-const names = ORDER.filter(d => schedule.days.map(Number).includes(d)).map(d => DAY_NAMES[d]);
-                  return <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)' }}>● Dias de atencion:  {names.join(', ')}</span>;
+                  const ORDER = [1, 2, 3, 4, 5, 6, 0];
+                  const names = ORDER.filter(d => schedule.days.map(Number).includes(d)).map(d => DAY_NAMES[d]);
+                  return <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)' }}>● Dias de atencion: {names.join(', ')}</span>;
                 })()}
               </div>
             </div>
@@ -826,6 +916,72 @@ const names = ORDER.filter(d => schedule.days.map(Number).includes(d)).map(d => 
                 <div><div style={{ fontSize: 12, fontWeight: 700, color: GOLD, lineHeight: 1 }}>Prode Mundial 2026</div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>Pronosticá y ganá premios</div></div>
               </div>
               <a href={`/prode-publico${clientId ? `?clientId=${clientId}` : ''}`} style={{ background: GOLD, color: '#000', borderRadius: 8, padding: '7px 12px', fontSize: 11, fontWeight: 800, textDecoration: 'none', whiteSpace: 'nowrap', flexShrink: 0 }}>Jugar →</a>
+            </div>
+          </div>
+        )}
+
+        {dailyDeal && open && (() => {
+          // Buscar el producto vinculado en el menú para poder agregarlo al carrito
+          const allProducts = Object.values(menu).flat();
+          const linkedProduct = dailyDeal.productId
+            ? allProducts.find(p => p._id === dailyDeal.productId)
+            : null;
+          // Usar el precio de descuento de la promo, no el del menú normal
+          const promoProduct = linkedProduct
+            ? { ...linkedProduct, salePrice: dailyDeal.discountPrice || linkedProduct.salePrice }
+            : null;
+          const inCart = promoProduct ? cart.find(i => i.product === promoProduct._id) : null;
+
+          return (
+            <div style={{ margin: '12px 16px 0', background: 'linear-gradient(135deg, rgba(232,184,75,0.12), rgba(232,184,75,0.04))', border: '1px solid rgba(232,184,75,0.35)', borderRadius: 14, padding: '16px', overflow: 'hidden', position: 'relative' }}>
+              <div style={{ position: 'absolute', top: 0, right: 0, background: '#E8B84B', color: '#000', fontSize: '0.65rem', fontWeight: 900, padding: '4px 10px', borderBottomLeftRadius: 10, letterSpacing: '0.06em', textTransform: 'uppercase' }} className="deal-badge">
+                🔥 PROMO
+              </div>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                {dailyDeal.image && <img src={dailyDeal.image} alt={dailyDeal.name} style={{ width: 56, height: 56, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 900, color: '#E8B84B', fontSize: '1rem', letterSpacing: '-0.2px' }}>{dailyDeal.name || 'Promo del día'}</div>
+                  {dailyDeal.description && <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', marginTop: 2, lineHeight: 1.4 }}>{dailyDeal.description}</div>}
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+                    {dailyDeal.originalPrice > 0 && <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem', textDecoration: 'line-through' }}>{fmt(dailyDeal.originalPrice)}</span>}
+                    {dailyDeal.discountPrice > 0 && <span style={{ color: '#E8B84B', fontWeight: 900, fontSize: '1rem' }}>{fmt(dailyDeal.discountPrice)}</span>}
+                    {dailyDeal.discountPercent > 0 && <span style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: 99 }}>-{dailyDeal.discountPercent}%</span>}
+                    {countdown && <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', fontVariantNumeric: 'tabular-nums' }}>⏱ {countdown}</span>}
+                  </div>
+                </div>
+              </div>
+              {promoProduct && (
+                <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                  {inCart ? (
+                    <>
+                      <button onClick={() => removeFromCart(promoProduct._id)} style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', fontSize: '1rem', cursor: 'pointer' }}>−</button>
+                      <span style={{ fontWeight: 800, minWidth: 18, textAlign: 'center', color: 'white', fontSize: '0.9rem' }}>{inCart.quantity}</span>
+                      <button onClick={() => handleAddToCart(promoProduct)} style={{ width: 30, height: 30, borderRadius: '50%', background: GOLD, border: 'none', color: '#000', fontSize: '1rem', cursor: 'pointer', fontWeight: 800 }}>+</button>
+                    </>
+                  ) : (
+                    <button onClick={() => handleAddToCart(promoProduct)} style={{ background: GOLD, color: '#000', border: 'none', padding: '8px 20px', borderRadius: 10, fontWeight: 800, cursor: 'pointer', fontSize: '0.88rem' }}>
+                      🛒 Agregar al pedido
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {monthlyBurger && (
+          <div style={{ margin: '12px 16px 0', background: 'linear-gradient(135deg, rgba(129,140,248,0.10), rgba(129,140,248,0.03))', border: '1px solid rgba(129,140,248,0.25)', borderRadius: 14, padding: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ background: 'rgba(129,140,248,0.15)', color: '#818cf8', fontSize: '0.65rem', fontWeight: 800, padding: '3px 10px', borderRadius: 99, letterSpacing: '0.06em' }}>{monthlyBurger.badge || '🏆 Del mes'}</span>
+                  {monthlyBurger.month && <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)' }}>{monthlyBurger.month}</span>}
+                </div>
+                <div style={{ fontWeight: 900, color: 'white', fontSize: '1rem', letterSpacing: '-0.2px' }}>{monthlyBurger.name}</div>
+                {monthlyBurger.description && <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.45)', marginTop: 4, lineHeight: 1.5 }}>{monthlyBurger.description}</div>}
+                {monthlyBurger.price > 0 && <div style={{ color: '#818cf8', fontWeight: 800, fontSize: '0.95rem', marginTop: 6 }}>{fmt(monthlyBurger.price)}</div>}
+              </div>
+              {monthlyBurger.image && <img src={monthlyBurger.image} alt={monthlyBurger.name} style={{ width: 70, height: 70, borderRadius: 12, objectFit: 'cover', flexShrink: 0, border: '1px solid rgba(129,140,248,0.2)' }} />}
             </div>
           </div>
         )}
