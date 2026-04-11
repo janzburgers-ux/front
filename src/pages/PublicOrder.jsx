@@ -227,6 +227,12 @@ export default function PublicOrder() {
   const [dailyDeal, setDailyDeal]                       = useState(null);
   const [monthlyBurger, setMonthlyBurger]               = useState(null);
   const [pushGranted, setPushGranted]                   = useState(false);
+  const [showPushBanner, setShowPushBanner]             = useState(() => {
+    try {
+      // No mostrar si ya aceptó o si ya lo rechazó antes
+      return !localStorage.getItem('janz_push_granted') && !localStorage.getItem('janz_push_dismissed');
+    } catch { return false; }
+  });
   const [countdown, setCountdown]                       = useState('');
   const [activeSection, setActiveSection]               = useState('burgers');
   const [slotOccupancy, setSlotOccupancy]               = useState({});
@@ -417,8 +423,17 @@ export default function PublicOrder() {
       setPendingOrderCode(res.data.publicCode || res.data.orderNumber);
       setOrderResult(res.data); setOrderStatus('pending');
       setSubmitting(false);
-      setSubmitSuccess(true);   // ← cambia el modal a "gracias"
-      setTimeout(() => { setSubmitSuccess(false); setStep('tracking'); }, 2500);
+      setSubmitSuccess(true);
+      setTimeout(() => {
+        setSubmitSuccess(false);
+        setStep('tracking');
+        // Mostrar modal de notificaciones 1s después del tracking si aún no decidió
+        try {
+          if (!localStorage.getItem('janz_push_granted') && !localStorage.getItem('janz_push_dismissed')) {
+            setTimeout(() => setShowPushBanner(true), 1000);
+          }
+        } catch {}
+      }, 2500);
     } catch (e) {
       setSubmitting(false);
       toast.error(e.response?.data?.message || 'Error al enviar pedido');
@@ -433,7 +448,10 @@ export default function PublicOrder() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
     try {
       const permission = await Notification.requestPermission();
-      if (permission !== 'granted') return;
+      if (permission !== 'granted') {
+        try { localStorage.setItem('janz_push_dismissed', '1'); } catch {}
+        return;
+      }
       const reg = await navigator.serviceWorker.ready;
       const vapidKey = process.env.REACT_APP_VAPID_PUBLIC_KEY;
       if (!vapidKey) return;
@@ -442,6 +460,7 @@ export default function PublicOrder() {
         applicationServerKey: urlBase64ToUint8Array(vapidKey)
       });
       await API.post('/push/subscribe', { subscription: sub, userAgent: navigator.userAgent });
+      try { localStorage.setItem('janz_push_granted', '1'); } catch {}
       setPushGranted(true);
     } catch (e) { console.warn('Push subscription failed:', e); }
   };
@@ -523,6 +542,27 @@ export default function PublicOrder() {
 
   if (step === 'tracking') return (
     <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      {showPushBanner && !pushGranted && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 24 }}>
+          <div style={{ background: '#0f0f0f', borderRadius: 20, width: '100%', maxWidth: 360, padding: '36px 28px', border: '1px solid rgba(232,184,75,0.2)', textAlign: 'center' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🔔</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: GOLD, marginBottom: 8, lineHeight: 1.2 }}>¿Querés recibir notificaciones?</div>
+            <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem', lineHeight: 1.6, marginBottom: 28 }}>
+              Enterate de promos exclusivas, descuentos y novedades de Janz Burgers antes que nadie 🍔
+            </div>
+            <button
+              onClick={() => { setShowPushBanner(false); requestPushPermission(); }}
+              style={{ width: '100%', background: GOLD, color: '#000', border: 'none', padding: '14px', borderRadius: 12, fontWeight: 800, cursor: 'pointer', fontSize: '0.95rem', marginBottom: 10 }}>
+              🔔 Sí, activar notificaciones
+            </button>
+            <button
+              onClick={() => { setShowPushBanner(false); try { localStorage.setItem('janz_push_dismissed', '1'); } catch {} }}
+              style={{ width: '100%', background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.3)', padding: '12px', borderRadius: 12, fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+              Ahora no
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{ width: '100%', maxWidth: 460 }}>
         <div style={{ textAlign: 'center', marginBottom: 4 }}>
           <img src={logoJanz} alt="Janz" style={{ height: 48, objectFit: 'contain', marginBottom: 20, opacity: 0.9 }} />
@@ -987,6 +1027,28 @@ export default function PublicOrder() {
         )}
 
         {!open && <div style={{ margin: '10px 16px 0', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '10px 14px', color: '#ef4444', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem' }}>🔴 En este momento no estamos tomando pedidos</div>}
+
+        {showPushBanner && !pushGranted && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 24 }}>
+            <div style={{ background: '#0f0f0f', borderRadius: 20, width: '100%', maxWidth: 360, padding: '36px 28px', border: '1px solid rgba(232,184,75,0.2)', textAlign: 'center' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🔔</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: GOLD, marginBottom: 8, lineHeight: 1.2 }}>¿Querés recibir notificaciones?</div>
+              <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem', lineHeight: 1.6, marginBottom: 28 }}>
+                Enterate de promos exclusivas, descuentos y novedades de Janz Burgers antes que nadie 🍔
+              </div>
+              <button
+                onClick={() => { setShowPushBanner(false); requestPushPermission(); }}
+                style={{ width: '100%', background: GOLD, color: '#000', border: 'none', padding: '14px', borderRadius: 12, fontWeight: 800, cursor: 'pointer', fontSize: '0.95rem', marginBottom: 10 }}>
+                🔔 Sí, activar notificaciones
+              </button>
+              <button
+                onClick={() => { setShowPushBanner(false); try { localStorage.setItem('janz_push_dismissed', '1'); } catch {} }}
+                style={{ width: '100%', background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.3)', padding: '12px', borderRadius: 12, fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+                Ahora no
+              </button>
+            </div>
+          </div>
+        )}
 
         {navItems.length > 1 && (
           <div className="sticky-nav">
