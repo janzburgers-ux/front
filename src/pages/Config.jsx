@@ -49,7 +49,8 @@ export default function Config() {
 
   // ── Sistema de reseñas ────────────────────────────────────────────────────
   const [reviewSettings, setReviewSettings] = useState({
-    enabled: true, incentiveType: 'discount', discountPercent: 10,
+    enabled: true, sendMode: 'auto', orderInterval: 1,
+    incentiveType: 'discount', discountPercent: 10,
     productId: null, productName: 'Papas fritas', validDays: 30, waitMinutes: 10
   });
   const [products, setProducts] = useState([]);
@@ -764,14 +765,45 @@ export default function Config() {
           </div>
 
           <div style={{ opacity: reviewSettings.enabled ? 1 : 0.4, pointerEvents: reviewSettings.enabled ? 'auto' : 'none' }}>
+            {/* Modo de envío */}
+            <div style={{ marginBottom: 16 }}>
+              <label className="form-label">📤 Modo de envío</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[['auto', '🤖 Automático'], ['manual', '✋ Manual']].map(([v, l]) => (
+                  <button key={v} onClick={() => setReviewSettings(r => ({ ...r, sendMode: v }))}
+                    style={{ flex: 1, padding: '10px', borderRadius: 10, fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', border: `1px solid ${reviewSettings.sendMode === v ? 'rgba(232,184,75,0.6)' : 'var(--border)'}`, background: reviewSettings.sendMode === v ? 'rgba(232,184,75,0.1)' : 'var(--dark)', color: reviewSettings.sendMode === v ? 'var(--gold)' : 'var(--gray)', transition: 'all 0.15s' }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 6 }}>
+                {reviewSettings.sendMode === 'auto'
+                  ? '🤖 Se envía solo cuando el pedido se marca como entregado'
+                  : '✋ El sistema NO envía automáticamente. Vos elegís cuándo mandar desde la pantalla del pedido'}
+              </div>
+            </div>
+
             <div className="grid-2" style={{ marginBottom: 16 }}>
               <div>
                 <label className="form-label">⏱️ Minutos de espera post-entrega</label>
                 <input type="number" min={1} max={120} value={reviewSettings.waitMinutes}
-                  onChange={e => setReviewSettings(r => ({ ...r, waitMinutes: Number(e.target.value) }))} />
+                  onChange={e => setReviewSettings(r => ({ ...r, waitMinutes: Number(e.target.value) }))}
+                  disabled={reviewSettings.sendMode === 'manual'} />
                 <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4 }}>Tiempo que espera antes de mandar el WA</div>
               </div>
               <div>
+                <label className="form-label">🔁 Enviar cada X pedidos del cliente</label>
+                <input type="number" min={1} max={50} value={reviewSettings.orderInterval}
+                  onChange={e => setReviewSettings(r => ({ ...r, orderInterval: Math.max(1, Number(e.target.value)) }))}
+                  disabled={reviewSettings.sendMode === 'manual'} />
+                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4 }}>
+                  {reviewSettings.orderInterval === 1
+                    ? 'Se envía en cada pedido entregado'
+                    : `Se envía cada ${reviewSettings.orderInterval} pedidos (pedidos 5, 10, 15...)`}
+                </div>
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
                 <label className="form-label">🎁 Tipo de incentivo</label>
                 <select value={reviewSettings.incentiveType}
                   onChange={e => setReviewSettings(r => ({ ...r, incentiveType: e.target.value }))}
@@ -780,7 +812,6 @@ export default function Config() {
                   <option value="product">Producto gratis</option>
                   <option value="none">Sin incentivo</option>
                 </select>
-              </div>
             </div>
 
             {reviewSettings.incentiveType === 'discount' && (
@@ -821,7 +852,12 @@ export default function Config() {
             )}
 
             <div style={{ padding: '12px 14px', background: 'rgba(232,184,75,0.06)', border: '1px solid rgba(232,184,75,0.15)', borderRadius: 10, fontSize: '0.82rem', color: 'var(--gray)', marginBottom: 16 }}>
-              💡 <strong style={{ color: 'var(--gold)' }}>Flujo automático:</strong> Pedido entregado → espera {reviewSettings.waitMinutes} min → WA al cliente → cliente califica → {reviewSettings.incentiveType === 'none' ? 'agradecimiento' : 'cupón generado automáticamente'}.
+              {reviewSettings.sendMode === 'manual'
+                ? <>✋ <strong style={{ color: 'var(--gold)' }}>Modo manual:</strong> El WA de reseña NO se envía automáticamente. Podés enviarlo manualmente desde la pantalla de pedidos.</>
+                : <>💡 <strong style={{ color: 'var(--gold)' }}>Flujo automático:</strong> Pedido entregado
+                    {reviewSettings.orderInterval > 1 ? ` (cada ${reviewSettings.orderInterval}° pedido del cliente)` : ''}
+                    {' → '} espera {reviewSettings.waitMinutes} min → WA al cliente → cliente califica → {reviewSettings.incentiveType === 'none' ? 'agradecimiento' : 'cupón generado automáticamente'}.</>
+              }
             </div>
           </div>
 

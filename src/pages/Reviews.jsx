@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Star, CheckCircle, Trash2, RefreshCw, Filter } from 'lucide-react';
+import { Star, CheckCircle, Trash2, RefreshCw, Filter, Send } from 'lucide-react';
 import API from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -36,8 +36,10 @@ export default function Reviews() {
   const [loading, setLoading]   = useState(true);
   const [filterStars, setFilter] = useState('');
   const [filterUnread, setUnread] = useState(false);
+  const [filterCompleted, setFilterCompleted] = useState('all'); // 'all' | 'completed' | 'pending'
   const [page, setPage]         = useState(1);
   const [deleting, setDeleting] = useState(null);
+  const [sending, setSending]   = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,11 +47,12 @@ export default function Reviews() {
       const params = new URLSearchParams({ page, limit: 20 });
       if (filterStars) params.set('stars', filterStars);
       if (filterUnread) params.set('unread', 'true');
+      if (filterCompleted !== 'all') params.set('completed', filterCompleted === 'completed' ? 'true' : 'false');
       const res = await API.get(`/reviews?${params}`);
       setData(res.data);
     } catch { toast.error('Error al cargar reseñas'); }
     finally { setLoading(false); }
-  }, [page, filterStars, filterUnread]);
+  }, [page, filterStars, filterUnread, filterCompleted]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -68,6 +71,17 @@ export default function Reviews() {
       load();
     } catch { toast.error('Error'); }
     finally { setDeleting(null); }
+  };
+
+  const sendManual = async (review) => {
+    setSending(review._id);
+    try {
+      await API.post(`/reviews/${review._id}/send-request`);
+      toast.success(`WA enviado a ${review.clientName || 'cliente'}`);
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Error al enviar WA');
+    } finally { setSending(null); }
   };
 
   const s = data.stats;
@@ -149,6 +163,13 @@ export default function Reviews() {
             style={{ padding: '6px 14px', borderRadius: 100, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', border: 'none', background: filterUnread ? '#f59e0b' : 'var(--card)', color: filterUnread ? '#000' : 'var(--gray)', transition: 'all 0.15s' }}>
             Sin leer
           </button>
+          {/* Filtro completadas vs pendientes */}
+          {[['all','Todas'],['completed','✅ Completadas'],['pending','⏳ Pendientes']].map(([v,l]) => (
+            <button key={v} onClick={() => { setFilterCompleted(v); setPage(1); }}
+              style={{ padding: '6px 14px', borderRadius: 100, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', border: 'none', background: filterCompleted === v ? '#6366f1' : 'var(--card)', color: filterCompleted === v ? '#fff' : 'var(--gray)', transition: 'all 0.15s' }}>
+              {l}
+            </button>
+          ))}
         </div>
 
         {/* ── Lista de reseñas ──────────────────────────────────────────────── */}
@@ -165,25 +186,33 @@ export default function Reviews() {
         ) : (
           <>
             {data.reviews.map(r => (
-              <div key={r._id} style={{ background: '#0f0f0f', border: `1px solid ${!r.reviewed ? 'rgba(232,184,75,0.2)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 14, padding: 20, marginBottom: 12, transition: 'border 0.2s' }}>
+              <div key={r._id} style={{ background: '#0f0f0f', border: `1px solid ${!r.reviewed && r.completed ? 'rgba(232,184,75,0.2)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 14, padding: 20, marginBottom: 12, transition: 'border 0.2s', opacity: r.completed ? 1 : 0.6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {/* Header */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                      <StarDisplay stars={r.stars} size={16} />
+                      {r.completed
+                        ? <StarDisplay stars={r.stars} size={16} />
+                        : <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>⏳ WA enviado · esperando respuesta</span>
+                      }
                       <span style={{ fontWeight: 700, color: 'white', fontSize: '0.9rem' }}>{r.clientName || 'Cliente'}</span>
-                      {!r.reviewed && <span style={{ background: 'rgba(232,184,75,0.15)', color: GOLD, fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: 100, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Nuevo</span>}
+                      {r.clientWhatsapp && <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.25)' }}>{r.clientWhatsapp}</span>}
+                      {!r.reviewed && r.completed && <span style={{ background: 'rgba(232,184,75,0.15)', color: GOLD, fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: 100, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Nuevo</span>}
+                      {!r.completed && r.requestSent && <span style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: 100, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Pendiente</span>}
+                      {!r.requestSent && <span style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.3)', fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: 100, textTransform: 'uppercase', letterSpacing: '0.06em' }}>No enviado</span>}
                       <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.25)', marginLeft: 'auto' }}>
                         {new Date(r.createdAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </span>
                     </div>
 
-                    {/* Chips de respuestas rápidas */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: r.comment ? 12 : 0 }}>
-                      {r.burgerRating && <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.05)', padding: '3px 10px', borderRadius: 99, color: 'rgba(255,255,255,0.5)' }}>{burgerLabels[r.burgerRating] || r.burgerRating}</span>}
-                      {r.tempRating   && <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.05)', padding: '3px 10px', borderRadius: 99, color: 'rgba(255,255,255,0.5)' }}>{tempLabels[r.tempRating] || r.tempRating}</span>}
-                      {r.onTime != null && <span style={{ fontSize: '0.75rem', background: r.onTime ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', padding: '3px 10px', borderRadius: 99, color: r.onTime ? '#22c55e' : '#ef4444' }}>{r.onTime ? '✅ A tiempo' : '❌ Llegó tarde'}</span>}
-                    </div>
+                    {/* Chips de respuestas rápidas (solo si completó la reseña) */}
+                    {r.completed && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: r.comment ? 12 : 0 }}>
+                        {r.burgerRating && <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.05)', padding: '3px 10px', borderRadius: 99, color: 'rgba(255,255,255,0.5)' }}>{burgerLabels[r.burgerRating] || r.burgerRating}</span>}
+                        {r.tempRating   && <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.05)', padding: '3px 10px', borderRadius: 99, color: 'rgba(255,255,255,0.5)' }}>{tempLabels[r.tempRating] || r.tempRating}</span>}
+                        {r.onTime != null && <span style={{ fontSize: '0.75rem', background: r.onTime ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', padding: '3px 10px', borderRadius: 99, color: r.onTime ? '#22c55e' : '#ef4444' }}>{r.onTime ? '✅ A tiempo' : '❌ Llegó tarde'}</span>}
+                      </div>
+                    )}
 
                     {/* Comentario */}
                     {r.comment && (
@@ -202,9 +231,16 @@ export default function Reviews() {
 
                   {/* Acciones */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
-                    {!r.reviewed && (
+                    {/* Enviar WA manualmente (si no se envió aún) */}
+                    {!r.requestSent && r.clientWhatsapp && (
+                      <button onClick={() => sendManual(r)} disabled={sending === r._id} title="Enviar solicitud de reseña por WA"
+                        style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e', borderRadius: 8, padding: '6px 8px', cursor: 'pointer', opacity: sending === r._id ? 0.5 : 1 }}>
+                        <Send size={14} />
+                      </button>
+                    )}
+                    {r.completed && !r.reviewed && (
                       <button onClick={() => markRead(r._id)} title="Marcar como leída"
-                        style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e', borderRadius: 8, padding: '6px 8px', cursor: 'pointer' }}>
+                        style={{ background: 'rgba(232,184,75,0.1)', border: '1px solid rgba(232,184,75,0.2)', color: GOLD, borderRadius: 8, padding: '6px 8px', cursor: 'pointer' }}>
                         <CheckCircle size={14} />
                       </button>
                     )}
