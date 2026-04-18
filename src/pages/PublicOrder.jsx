@@ -338,7 +338,23 @@ export default function PublicOrder() {
   // ── Cálculos derivados ────────────────────────────────────────────────────
   const subtotalBruto = cart.reduce((s, i) => s + itemTotal(i), 0);
   const activeDiscountPercent = couponStatus?.valid ? couponStatus.discountPercent : (inDiscountWindow && hourlyDiscount?.enabled ? hourlyDiscount.discountPercent : 0);
-  const discount = activeDiscountPercent > 0 ? Math.round(subtotalBruto * activeDiscountPercent / 100) : 0;
+
+  // Si el cupón es para un producto específico, el descuento aplica solo a ese ítem
+  const discount = (() => {
+    if (!activeDiscountPercent) return 0;
+    if (couponStatus?.valid && couponStatus.applicableProduct) {
+      // Buscar el ítem en el carrito que coincide con el producto del cupón
+      const targetItem = cart.find(i =>
+        i.product === couponStatus.applicableProduct._id ||
+        i.product?._id === couponStatus.applicableProduct._id ||
+        i._id === couponStatus.applicableProduct._id
+      );
+      if (!targetItem) return 0;
+      const itemSubtotal = (targetItem.salePrice || targetItem.unitPrice || 0) * (targetItem.quantity || 1);
+      return Math.round(itemSubtotal * activeDiscountPercent / 100);
+    }
+    return Math.round(subtotalBruto * activeDiscountPercent / 100);
+  })();
   const subtotalConDescuento = subtotalBruto - discount;
   const totalFinal = subtotalConDescuento + (deliveryType === 'delivery' ? deliveryCost : 0);
 
@@ -388,7 +404,13 @@ export default function PublicOrder() {
     setValidatingCoupon(true);
     try {
       const res = await API.post('/coupons/validate', { code: couponCode.trim(), whatsapp: client.whatsapp });
-      setCouponStatus({ valid: true, discountPercent: res.data.discountPercent, message: res.data.message });
+      setCouponStatus({
+        valid: true,
+        discountPercent: res.data.discountPercent,
+        message: res.data.message,
+        applicableProduct: res.data.applicableProduct || null,
+        applicableProductName: res.data.applicableProductName || null,
+      });
     } catch (e) { setCouponStatus({ valid: false, message: e.response?.data?.message || 'Cupón inválido' }); }
     finally { setValidatingCoupon(false); }
   };

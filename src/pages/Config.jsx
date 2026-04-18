@@ -55,6 +55,23 @@ export default function Config() {
   });
   const [products, setProducts] = useState([]);
 
+  // ── Templates de WhatsApp ─────────────────────────────────────────────────
+  const WA_DEFAULTS = {
+    orderReceived:  '¡Hola {nombre}! 👋\n\nRecibimos tu pedido *{codigo}* ✅\n\nEn breve te confirmamos cuando la cocina lo apruebe.\n\n_Janz Burgers_ 🍔',
+    orderConfirmed: '¡Hola {nombre}! 🔥\n\nTu pedido *{codigo}* fue *confirmado por la cocina* y ya está en preparación.{tiempoEstimado}\n\n*Detalle del pedido:*\n{items}{descuento}\n\n💰 *Total: {total}*\n{metodoPago}\n\n_Janz Burgers_ 🍔',
+    orderReady:     '¡Hola {nombre}! 🛵\n\nTu pedido *{codigo}* está *en camino*. ✅\n\nEn instantes llega a tu puerta.\n{metodoPago}\n\n_Janz Burgers_ 🍔',
+    orderCancelled: '¡Hola {nombre}! 😔\n\nTe avisamos que tu pedido *{codigo}* fue cancelado porque en este momento no contamos con stock suficiente.\n\nDisculpá las molestias.\n\n_Janz Burgers_ 🍔',
+    reviewRequest:  '¡Hola {nombre}! 🍔\n\n¿Cómo estuvo tu pedido de hoy?\n\nContanos qué te pareció y *te regalamos algo para la próxima* 🎁\n\n👉 {link}\n\n¡Solo tarda 30 segundos!\n\n_Janz Burgers_ 🍔',
+  };
+  const WA_LABELS = {
+    orderReceived:  { label: '1. Pedido recibido', vars: '{nombre}, {codigo}' },
+    orderConfirmed: { label: '2. Pedido confirmado', vars: '{nombre}, {codigo}, {total}, {items}, {descuento}, {metodoPago}, {tiempoEstimado}' },
+    orderReady:     { label: '3. En camino / Listo para retirar', vars: '{nombre}, {codigo}, {total}, {metodoPago}' },
+    orderCancelled: { label: '4. Pedido cancelado', vars: '{nombre}, {codigo}' },
+    reviewRequest:  { label: '5. Solicitud de reseña', vars: '{nombre}, {link}, {codigo}' },
+  };
+  const [waTemplates, setWaTemplates] = useState({ ...WA_DEFAULTS });
+
   // ── Hamburguesa del día ───────────────────────────────────────────────────
   const [dailyDeal, setDailyDeal] = useState({
     enabled: false, name: '', description: '', originalPrice: 0,
@@ -99,6 +116,7 @@ export default function Config() {
         if (cfg.reviewSettings) setReviewSettings(cfg.reviewSettings);
         if (cfg.dailyDeal) setDailyDeal(cfg.dailyDeal);
         if (cfg.monthlyBurger) setMonthlyBurger(cfg.monthlyBurger);
+        if (cfg.whatsappTemplates) setWaTemplates(t => ({ ...t, ...cfg.whatsappTemplates }));
       })
       .finally(() => setLoading(false));
   }, []);
@@ -1012,6 +1030,44 @@ export default function Config() {
               finally { setSaving(''); }
             }}>
             <Save size={15} /> {saving === 'monthly' ? 'Guardando...' : 'Guardar hamburguesa del mes'}
+          </button>
+        </Section>
+
+      {/* Mensajes de WhatsApp */}
+        <Section title="Mensajes de WhatsApp" icon={MessageCircle}>
+          <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: 20 }}>
+            Personalizá los mensajes que se envían automáticamente. Usá las variables indicadas para insertar datos dinámicos.
+          </p>
+          {Object.entries(WA_LABELS).map(([key, meta]) => (
+            <div key={key} style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                <label className="form-label" style={{ margin: 0, fontWeight: 700 }}>{meta.label}</label>
+                <span style={{ fontSize: '0.7rem', color: 'var(--gray)', fontFamily: 'monospace' }}>{meta.vars}</span>
+              </div>
+              <textarea
+                rows={5}
+                value={waTemplates[key] ?? WA_DEFAULTS[key]}
+                onChange={e => setWaTemplates(t => ({ ...t, [key]: e.target.value }))}
+                style={{ width: '100%', resize: 'vertical', fontFamily: 'monospace', fontSize: '0.82rem', lineHeight: 1.5 }}
+              />
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ marginTop: 4, fontSize: '0.72rem' }}
+                onClick={() => setWaTemplates(t => ({ ...t, [key]: WA_DEFAULTS[key] }))}>
+                ↺ Restaurar predeterminado
+              </button>
+            </div>
+          ))}
+          <button className="btn btn-primary" disabled={saving === 'waTemplates'}
+            onClick={async () => {
+              setSaving('waTemplates');
+              try {
+                await API.put('/config/whatsappTemplates', { value: waTemplates });
+                toast.success('Mensajes de WhatsApp guardados');
+              } catch { toast.error('Error al guardar'); }
+              finally { setSaving(''); }
+            }}>
+            <Save size={15} /> {saving === 'waTemplates' ? 'Guardando...' : 'Guardar mensajes'}
           </button>
         </Section>
 

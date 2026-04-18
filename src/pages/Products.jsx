@@ -516,6 +516,7 @@ export default function Products() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [editPrice, setEditPrice] = useState('');
+  const [editingName, setEditingName] = useState(null); // { id, value }
   const [showConfig, setShowConfig] = useState(false);
   const [showNewProduct, setShowNewProduct] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -555,6 +556,27 @@ export default function Products() {
       setProducts(prev => prev.map(p => p._id === product._id ? { ...p, available: !p.available } : p));
       toast.success(product.available ? `${product.name} → No disponible` : `${product.name} → Disponible`);
     } catch { toast.error('Error'); }
+  };
+
+  const toggleVisible = async (product) => {
+    const newVisible = product.visible === false ? true : false;
+    try {
+      await API.put(`/products/${product._id}`, { visible: newVisible });
+      setProducts(prev => prev.map(p => p._id === product._id ? { ...p, visible: newVisible } : p));
+      toast.success(newVisible ? `${product.name} → Visible en menú` : `${product.name} → Oculto del menú público`);
+    } catch { toast.error('Error al cambiar visibilidad'); }
+  };
+
+  const saveEditName = async (groupName, newName) => {
+    if (!newName.trim() || newName.trim() === groupName) { setEditingName(null); return; }
+    try {
+      // Actualizar todos los productos del grupo (todas las variantes comparten el nombre)
+      const group = products.filter(p => p.name === groupName);
+      await Promise.all(group.map(p => API.put(`/products/${p._id}`, { name: newName.trim() })));
+      setProducts(prev => prev.map(p => p.name === groupName ? { ...p, name: newName.trim() } : p));
+      setEditingName(null);
+      toast.success(`Nombre actualizado → ${newName.trim()}`);
+    } catch { toast.error('Error al actualizar nombre'); }
   };
 
   const deleteProduct = async (product) => {
@@ -618,11 +640,45 @@ export default function Products() {
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-              <div>
-                <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.8rem', color: 'var(--gold)' }}>🍔 {name}</div>
+              <div style={{ flex: 1 }}>
+                {editingName?.id === name ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      autoFocus
+                      value={editingName.value}
+                      onChange={e => setEditingName({ id: name, value: e.target.value })}
+                      onKeyDown={e => { if (e.key === 'Enter') saveEditName(name, editingName.value); if (e.key === 'Escape') setEditingName(null); }}
+                      style={{ fontFamily: 'Bebas Neue', fontSize: '1.6rem', background: 'var(--input-bg)', border: '1px solid var(--gold)', borderRadius: 8, padding: '2px 10px', color: 'var(--gold)', width: 280 }}
+                    />
+                    <button className="btn-icon" onClick={() => saveEditName(name, editingName.value)} style={{ color: 'var(--green)' }}><Check size={16} /></button>
+                    <button className="btn-icon" onClick={() => setEditingName(null)} style={{ color: 'var(--red)' }}><X size={16} /></button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.8rem', color: 'var(--gold)' }}>🍔 {name}</div>
+                    <button className="btn-icon" title="Editar nombre" onClick={() => setEditingName({ id: name, value: name })} style={{ opacity: 0.6 }}>
+                      <Edit2 size={14} />
+                    </button>
+                  </div>
+                )}
                 {variants[0]?.description && (
                   <div style={{ color: 'var(--gray)', fontSize: '0.82rem', marginTop: 4, maxWidth: 500 }}>{variants[0].description}</div>
                 )}
+              </div>
+              {/* Botón ocultar/mostrar del menú público — afecta TODAS las variantes del grupo */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {variants.some(p => p.visible === false) && (
+                  <span style={{ fontSize: '0.72rem', background: 'rgba(239,68,68,0.12)', color: 'var(--red)', padding: '2px 10px', borderRadius: 99, fontWeight: 700 }}>
+                    OCULTO DEL MENÚ
+                  </span>
+                )}
+                <button
+                  title={variants.some(p => p.visible === false) ? 'Mostrar en menú público' : 'Ocultar del menú público'}
+                  onClick={() => toggleVisible(variants[0])}
+                  style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: variants.some(p => p.visible === false) ? 'var(--red)' : 'var(--gray)', fontSize: '0.78rem', fontWeight: 600 }}>
+                  {variants.some(p => p.visible === false) ? <Eye size={15} /> : <EyeOff size={15} />}
+                  {variants.some(p => p.visible === false) ? 'Mostrar' : 'Ocultar'}
+                </button>
               </div>
             </div>
             <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>

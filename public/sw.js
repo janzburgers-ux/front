@@ -57,13 +57,16 @@ self.addEventListener('push', event => {
   let data = {};
   try { data = event.data.json(); } catch { data = { title: 'Janz Burgers', body: event.data.text() }; }
 
-  const { title = 'Janz Burgers', body = '', icon = '/favicon-logo.png', url = '/pedido' } = data;
+  const { title = 'Janz Burgers', body = '', url = '/pedido' } = data;
 
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon: '/favicon-logo.png',
-      badge: '/favicon.png',
+      // Android requiere un PNG monocromático (blanco sobre transparente) para el ícono de notificación.
+      // notification-icon.png = versión blanca del logo (96x96, fondo transparente)
+      // badge.png = versión mínima para la barra de estado (72x72, monocromático)
+      icon:  '/icons/notification-icon.png',
+      badge: '/icons/badge.png',
       tag: 'janz-push',
       renotify: true,
       data: { url },
