@@ -767,13 +767,17 @@ export default function Config() {
 
         {/* ── Sistema de reseñas ──────────────────────────────────────────── */}
         <Section title="Sistema de reseñas" icon={MessageCircle}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, padding: '14px 16px', background: 'var(--dark)', borderRadius: 10, border: `1px solid ${reviewSettings.enabled ? 'rgba(232,184,75,0.3)' : 'var(--border)'}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: reviewSettings.enabled && reviewSettings.reviewActivatedAt ? 10 : 20, padding: '14px 16px', background: 'var(--dark)', borderRadius: 10, border: `1px solid ${reviewSettings.enabled ? 'rgba(232,184,75,0.3)' : 'var(--border)'}` }}>
             <div>
               <div style={{ fontWeight: 700, color: reviewSettings.enabled ? 'var(--gold)' : 'var(--gray)', marginBottom: 2 }}>
                 {reviewSettings.enabled ? '🟢 Activo' : '⚪ Inactivo'}
               </div>
               <div style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>
-                {reviewSettings.enabled ? 'Se envía WhatsApp automático al entregar cada pedido' : 'No se solicitan reseñas'}
+                {reviewSettings.enabled
+                  ? reviewSettings.reviewActivatedAt
+                    ? `Activo desde ${new Date(reviewSettings.reviewActivatedAt).toLocaleDateString('es-AR')} · el contador arranca desde esa fecha`
+                    : 'Se envía WhatsApp automático al entregar cada pedido'
+                  : 'No se solicitan reseñas'}
               </div>
             </div>
             <button className={`btn btn-sm ${reviewSettings.enabled ? 'btn-primary' : 'btn-secondary'}`}
@@ -781,6 +785,16 @@ export default function Config() {
               {reviewSettings.enabled ? 'Desactivar' : 'Activar'}
             </button>
           </div>
+
+          {/* Caja explicativa de activación */}
+          {reviewSettings.enabled && reviewSettings.reviewActivatedAt && (
+            <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 8, fontSize: '0.8rem' }}>
+              <strong style={{ color: '#22c55e' }}>📅 Lógica de conteo:</strong>{' '}
+              Solo cuentan pedidos desde el <strong>{new Date(reviewSettings.reviewActivatedAt).toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' })}</strong>.
+              El primer pedido de cada cliente desde esa fecha siempre recibe la solicitud de reseña.
+              Luego, cada <strong>{reviewSettings.orderInterval}</strong> pedido{reviewSettings.orderInterval > 1 ? 's' : ''}.
+            </div>
+          )}
 
           <div style={{ opacity: reviewSettings.enabled ? 1 : 0.4, pointerEvents: reviewSettings.enabled ? 'auto' : 'none' }}>
             {/* Modo de envío */}
@@ -810,14 +824,14 @@ export default function Config() {
                 <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4 }}>Tiempo que espera antes de mandar el WA</div>
               </div>
               <div>
-                <label className="form-label">🔁 Enviar cada X pedidos del cliente</label>
+                <label className="form-label">🔁 Enviar cada X pedidos (desde activación)</label>
                 <input type="number" min={1} max={50} value={reviewSettings.orderInterval}
                   onChange={e => setReviewSettings(r => ({ ...r, orderInterval: Math.max(1, Number(e.target.value)) }))}
                   disabled={reviewSettings.sendMode === 'manual'} />
                 <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4 }}>
                   {reviewSettings.orderInterval === 1
                     ? 'Se envía en cada pedido entregado'
-                    : `Se envía cada ${reviewSettings.orderInterval} pedidos (pedidos 5, 10, 15...)`}
+                    : `1° pedido desde activación siempre envía. Luego cada ${reviewSettings.orderInterval} pedidos`}
                 </div>
               </div>
             </div>
@@ -882,7 +896,13 @@ export default function Config() {
           <button className="btn btn-primary" disabled={saving === 'review'}
             onClick={async () => {
               setSaving('review');
-              try { await API.put('/config/reviewSettings', { value: reviewSettings }); toast.success('Configuración de reseñas guardada'); }
+              try {
+                await API.put('/config/reviewSettings', { value: reviewSettings });
+                toast.success('Configuración de reseñas guardada');
+                // Recargar para mostrar la fecha de activación si se activó recién
+                const res = await API.get('/config');
+                if (res.data?.reviewSettings) setReviewSettings(res.data.reviewSettings);
+              }
               catch { toast.error('Error al guardar'); }
               finally { setSaving(''); }
             }}>
