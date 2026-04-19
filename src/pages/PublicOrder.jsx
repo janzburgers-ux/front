@@ -780,10 +780,15 @@ export default function PublicOrder() {
             <div style={{ color: '#444', fontSize: '0.82rem', marginBottom: 24 }}>Paso 1 de 3</div>
 
             {hourlyDiscount?.enabled && (
-              <div style={{ marginBottom: 20, padding: '12px 16px', borderRadius: 12, background: inDiscountWindow ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${inDiscountWindow ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.07)'}` }}>
+              <div style={{ marginBottom: 20, padding: '12px 16px', borderRadius: 12, background: (inDiscountWindow && !couponStatus?.valid) ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${(inDiscountWindow && !couponStatus?.valid) ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.07)'}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>{inDiscountWindow ? (<><div style={{ fontWeight: 700, color: '#22c55e', fontSize: '0.9rem' }}>🎉 ¡Estás en horario de descuento!</div><div style={{ fontSize: '0.76rem', color: '#86efac', marginTop: 3 }}>{hourlyDiscount.discountPercent}% off aplicado</div></>) : (<><div style={{ fontWeight: 600, color: '#aaa', fontSize: '0.85rem' }}>⏰ {hourlyDiscount.discountPercent}% off entre {hourlyDiscount.fromHour} y {hourlyDiscount.toHour}hs</div><div style={{ fontSize: '0.73rem', color: '#444', marginTop: 3 }}>Pedí en ese horario para obtenerlo</div></>)}</div>
-                  <div style={{ fontFamily: 'monospace', fontSize: '1.3rem', color: inDiscountWindow ? '#22c55e' : '#333', fontWeight: 700, marginLeft: 12 }}>{currentTime}</div>
+                  <div>{inDiscountWindow
+                    ? couponStatus?.valid
+                      ? <><div style={{ fontWeight: 600, color: '#aaa', fontSize: '0.85rem' }}>⏰ Horario de descuento activo</div><div style={{ fontSize: '0.73rem', color: '#555', marginTop: 3 }}>Tu cupón ya aplica descuento — no se acumulan</div></>
+                      : <><div style={{ fontWeight: 700, color: '#22c55e', fontSize: '0.9rem' }}>🎉 ¡Estás en horario de descuento!</div><div style={{ fontSize: '0.76rem', color: '#86efac', marginTop: 3 }}>{hourlyDiscount.discountPercent}% off aplicado</div></>
+                    : <><div style={{ fontWeight: 600, color: '#aaa', fontSize: '0.85rem' }}>⏰ {hourlyDiscount.discountPercent}% off entre {hourlyDiscount.fromHour} y {hourlyDiscount.toHour}hs</div><div style={{ fontSize: '0.73rem', color: '#444', marginTop: 3 }}>Pedí en ese horario para obtenerlo</div></>
+                  }</div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '1.3rem', color: (inDiscountWindow && !couponStatus?.valid) ? '#22c55e' : '#333', fontWeight: 700, marginLeft: 12 }}>{currentTime}</div>
                 </div>
               </div>
             )}
