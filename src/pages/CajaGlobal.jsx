@@ -485,7 +485,7 @@ export default function CajaGlobal() {
             {/* Panel de integrantes */}
             {s.membersStatus?.length > 0 && (
               <div style={{ marginBottom: 20 }}>
-                <div className="section-header"><div className="section-title">Ganancia por integrante</div></div>
+                <div className="section-header"><div className="section-title">Distribución ganancia neta <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--gray)', marginLeft: 6 }}>(sobre {fmt(s.netProfit)} neto)</span></div></div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
                   {s.membersStatus.map((m, i) => {
                     const color   = MEMBER_COLORS[i % MEMBER_COLORS.length];

@@ -6,15 +6,25 @@ import { Plus, Trash2, Save, MapPin, Clock, CreditCard, Users, Star, DollarSign,
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const fmt = n => `$${Number(n || 0).toLocaleString('es-AR')}`;
 
-// ─── Sección genérica ──────────────────────────────────────────────────────
-function Section({ title, icon: Icon, children }) {
+// ─── Acordeón — cada sección es colapsable ────────────────────────────────
+function Section({ title, icon: Icon, children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, marginBottom: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, marginBottom: 10, overflow: 'hidden' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '16px 20px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'white' }}
+      >
         <Icon size={18} color="var(--gold)" />
-        <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>{title}</h2>
-      </div>
-      {children}
+        <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text)', flex: 1 }}>{title}</h2>
+        <span style={{ color: 'var(--gray)', fontSize: '1.1rem', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ padding: '0 20px 20px' }}>
+          <div style={{ height: 1, background: 'var(--border)', marginBottom: 20 }} />
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -241,7 +251,7 @@ export default function Config() {
       <div className="page-body">
 
         {/* ── Alias de transferencia ─────────────────────────────────────── */}
-        <Section title="Transferencia" icon={CreditCard}>
+        <Section title="Transferencia" icon={CreditCard} defaultOpen>
           <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: 14 }}>
             Este alias aparece en el mensaje de WhatsApp cuando el cliente elige transferencia.
           </p>
@@ -277,7 +287,7 @@ export default function Config() {
         </Section>
 
         {/* ── Horario de atención ────────────────────────────────────────── */}
-        <Section title="Horario de atención" icon={Clock}>
+        <Section title="Horario de atención" icon={Clock} defaultOpen>
           <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: 14 }}>
             La página de pedidos se activa y desactiva automáticamente según este horario.
           </p>

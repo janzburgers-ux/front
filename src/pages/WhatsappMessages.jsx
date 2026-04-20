@@ -2,49 +2,63 @@ import { useState, useEffect } from 'react';
 import API from '../utils/api';
 import toast from 'react-hot-toast';
 
-const TEMPLATES = [
+const CATEGORIES = [
   {
-    key: 'orderReceived',
-    label: '📥 Pedido recibido',
-    desc: 'Se envía inmediatamente cuando el cliente confirma el pedido.',
-    vars: ['{nombre}', '{codigo}']
+    label: '📦 Pedidos',
+    templates: [
+      { key: 'orderReceived', label: '📥 Pedido recibido', desc: 'Se envía inmediatamente cuando el cliente confirma el pedido desde el formulario público.', vars: ['{nombre}', '{codigo}'] },
+      { key: 'orderConfirmed', label: '✅ Confirmado por cocina', desc: 'Se envía cuando la cocina acepta el pedido y asigna tiempo estimado.', vars: ['{nombre}', '{codigo}', '{total}', '{items}', '{descuento}', '{metodoPago}', '{alias}', '{tiempoEstimado}'] },
+      { key: 'orderReady', label: '🛵 Listo / en camino', desc: 'Se envía cuando el pedido pasa a "listo". Para delivery dice "en camino", para takeaway dice "listo para retirar".', vars: ['{nombre}', '{codigo}', '{total}', '{metodoPago}', '{alias}', '{tipoEntrega}'] },
+      { key: 'orderCancelled', label: '❌ Pedido cancelado', desc: 'Se envía cuando el pedido es cancelado por falta de stock u otro motivo.', vars: ['{nombre}', '{codigo}'] },
+    ],
   },
   {
-    key: 'orderConfirmed',
-    label: '✅ Pedido confirmado por cocina',
-    desc: 'Se envía cuando la cocina confirma y asigna tiempo estimado.',
-    vars: ['{nombre}', '{codigo}', '{total}', '{items}', '{descuento}', '{metodoPago}', '{alias}', '{tiempoEstimado}']
+    label: '⭐ Reseñas',
+    templates: [
+      { key: 'reviewRequest', label: '⭐ Solicitud de reseña', desc: 'Se envía automáticamente después de la entrega. Incluye el link personalizado para dejar la reseña.', vars: ['{nombre}', '{link}', '{codigo}'] },
+    ],
   },
   {
-    key: 'orderReady',
-    label: '🛵 Pedido listo / en camino',
-    desc: 'Se envía cuando el pedido pasa a estado "listo" o "en camino".',
-    vars: ['{nombre}', '{codigo}', '{total}', '{metodoPago}', '{alias}', '{tipoEntrega}']
+    label: '🎟️ Referidos',
+    templates: [
+      { key: 'referralNotify', label: '🌟 Uso de cupón referido', desc: 'Se envía al dueño del cupón cuando alguien lo usa y el pedido fue entregado. Muestra el % acumulado.', vars: ['{nombre}', '{codigo}', '{clienteNuevo}', '{porcentajeNuevo}', '{totalAcumulado}', '{usosValidos}', '{tope}'], readonly: true, note: 'Definido en loyalty.js → notifyReferralOwner(). Editarlo directamente en el backend.' },
+      { key: 'referralRedeem', label: '🎉 Recompensa canjeada', desc: 'Se envía al referente cuando se genera su cupón de recompensa al canjear su % acumulado.', vars: ['{nombre}', '{porcentaje}', '{tope}', '{codigoCupon}'], readonly: true, note: 'Definido en loyalty.js → redeemReferralReward(). Editarlo directamente en el backend.' },
+    ],
   },
   {
-    key: 'orderCancelled',
-    label: '❌ Pedido cancelado',
-    desc: 'Se envía cuando el pedido es cancelado por falta de stock u otro motivo.',
-    vars: ['{nombre}', '{codigo}']
+    label: '🔁 Churn',
+    templates: [
+      { key: 'churnAlert', label: '💬 Cliente inactivo', desc: 'Enviado automáticamente a clientes que no pidieron en X días. El texto se configura en la página "Alerta de Churn".', vars: ['{nombre}', '{codigo}', '{descuento}', '{dias}'], readonly: true, note: 'Configurable en la página Alerta de Churn → campo "Mensaje".' },
+    ],
+  },
+  {
+    label: '🏆 Fidelización',
+    templates: [
+      { key: 'loyaltyReward', label: '🎉 Cupón por puntos', desc: 'Se envía cuando un cliente acumula suficientes puntos y se genera automáticamente su cupón.', vars: ['{nombre}', '{porcentaje}', '{codigo}'], readonly: true, note: 'Definido en loyalty.js → generateLoyaltyCoupon(). Editarlo directamente en el backend.' },
+    ],
   },
 ];
 
 const DEFAULTS = {
-  orderReceived:
-    `¡Hola {nombre}! 👋\n\nRecibimos tu pedido *{codigo}* ✅\n\nEn breve te confirmamos cuando la cocina lo apruebe.\n\n_Janz Burgers_ 🍔`,
-  orderConfirmed:
-    `¡Hola {nombre}! 🔥\n\nTu pedido *{codigo}* fue *confirmado por la cocina* y ya está en preparación.\n{tiempoEstimado}\n\n*Detalle del pedido:*\n{items}{descuento}\n\n💰 *Total: {total}*\n{metodoPago}\n\n_Janz Burgers_ 🍔`,
-  orderReady:
-    `¡Hola {nombre}! 🛵\n\nTu pedido *{codigo}* está *en camino*. ✅\n\nEn instantes llega a tu puerta.\n{metodoPago}\n\n_Janz Burgers_ 🍔`,
-  orderCancelled:
-    `¡Hola {nombre}! 😔\n\nTe avisamos que tu pedido *{codigo}* fue cancelado porque en este momento no contamos con stock suficiente.\n\nDisculpá las molestias. Podés volver a pedir en nuestra próxima jornada.\n\n_Janz Burgers_ 🍔`,
+  orderReceived: `¡Hola {nombre}! 👋\n\nRecibimos tu pedido *{codigo}* ✅\n\nEn breve te confirmamos cuando la cocina lo apruebe.\n\n_Janz Burgers_ 🍔`,
+  orderConfirmed: `¡Hola {nombre}! 🔥\n\nTu pedido *{codigo}* fue *confirmado por la cocina* y ya está en preparación.{tiempoEstimado}\n\n*Detalle del pedido:*\n{items}{descuento}\n\n💰 *Total: {total}*\n{metodoPago}\n\n_Janz Burgers_ 🍔`,
+  orderReady: `¡Hola {nombre}! 🛵\n\nTu pedido *{codigo}* está *en camino*. ✅\n\nEn instantes llega a tu puerta.\n{metodoPago}\n\n_Janz Burgers_ 🍔`,
+  orderCancelled: `¡Hola {nombre}! 😔\n\nTe avisamos que tu pedido *{codigo}* fue cancelado porque en este momento no contamos con stock suficiente.\n\nDisculpá las molestias. Podés volver a pedir en nuestra próxima jornada.\n\n_Janz Burgers_ 🍔`,
+  reviewRequest: `¡Hola {nombre}! 🍔\n\n¿Cómo estuvo tu pedido de hoy?\n\nContanos qué te pareció y *te regalamos algo para la próxima* 🎁\n\n👉 {link}\n\n¡Solo tarda 30 segundos!\n\n_Janz Burgers_ 🍔`,
 };
+
+const PREVIEW = { nombre:'Gianfranco', codigo:'jz-abc4', total:'$15.000', items:'  • CAVA Simple ×1 — $12.000\n  • JANZ Doble ×1 — $15.000', descuento:'\n🎟️ Cupón RF-ABM37: -$1.500', metodoPago:'\n💵 Tené listo $15.000 en efectivo.', alias:'janzburgers', tiempoEstimado:'\n⏱️ Tiempo estimado: 25 minutos.', tipoEntrega:'delivery', link:'https://janzburgers.vercel.app/resena/jz-abc4', clienteNuevo:'María García', porcentajeNuevo:'5', totalAcumulado:'15', usosValidos:'3', tope:'$14.000', porcentaje:'15', codigoCupon:'RF-ABM37', dias:'25' };
+
+function fillPreview(tpl) {
+  if (!tpl) return '';
+  return Object.entries(PREVIEW).reduce((m,[k,v]) => m.replace(new RegExp(`\\{${k}\\}`,'g'),v), tpl);
+}
 
 export default function WhatsappMessages() {
   const [templates, setTemplates] = useState({ ...DEFAULTS });
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState('');
-  const [active, setActive]       = useState('orderReceived');
+  const [activeKey, setActiveKey] = useState('orderReceived');
 
   useEffect(() => {
     API.get('/whatsapp-templates')
@@ -55,110 +69,104 @@ export default function WhatsappMessages() {
 
   const save = async (key) => {
     setSaving(key);
-    try {
-      await API.put('/whatsapp-templates', { key, template: templates[key] });
-      toast.success('Template guardado');
-    } catch { toast.error('Error al guardar'); }
+    try { await API.put('/whatsapp-templates', { key, template: templates[key] }); toast.success('Mensaje guardado ✓'); }
+    catch { toast.error('Error al guardar'); }
     finally { setSaving(''); }
   };
 
-  const reset = (key) => {
-    setTemplates(t => ({ ...t, [key]: DEFAULTS[key] }));
-    toast('Template restaurado al default', { icon: '↩️' });
-  };
+  const reset = (key) => { if (!DEFAULTS[key]) return; setTemplates(t => ({ ...t, [key]: DEFAULTS[key] })); toast('Restaurado al default', { icon: '↩️' }); };
+  const insertVar = (key, v) => setTemplates(t => ({ ...t, [key]: (t[key]||'') + v }));
 
-  const insertVar = (key, varName) => {
-    setTemplates(t => ({ ...t, [key]: (t[key] || '') + varName }));
-  };
-
-  const currentTemplate = TEMPLATES.find(t => t.key === active);
-
-  const s = {
-    card: { background: '#111', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 24, marginBottom: 20 },
-    label: { fontSize: '0.68rem', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', marginBottom: 6 },
-    textarea: { width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'white', padding: '14px', fontSize: '0.88rem', outline: 'none', resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.6, boxSizing: 'border-box', minHeight: 200 },
-    tab: (active) => ({ padding: '10px 16px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', transition: 'all 0.2s', background: active ? '#E8B84B' : 'rgba(255,255,255,0.05)', color: active ? '#000' : '#666', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8 }),
-    varBtn: { padding: '4px 10px', borderRadius: 6, background: 'rgba(232,184,75,0.1)', border: '1px solid rgba(232,184,75,0.25)', color: '#E8B84B', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'monospace' }
-  };
+  const activeTemplate = CATEGORIES.flatMap(c => c.templates).find(t => t.key === activeKey);
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>;
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 900 }}>
-      <div style={{ marginBottom: 28 }}>
+    <div style={{ padding: '24px 28px', maxWidth: 1100 }}>
+      <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: '1.6rem', fontWeight: 900, color: '#E8B84B', marginBottom: 4 }}>Mensajes de WhatsApp</h1>
-        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.88rem' }}>Personalizá los mensajes automáticos que recibe el cliente. Usá las variables entre llaves para insertar datos dinámicos.</p>
+        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.88rem' }}>Todos los mensajes automáticos del sistema. Los editables los personalizás acá; los de código están documentados para referencia.</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20 }}>
-        {/* Tabs laterales */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {TEMPLATES.map(t => (
-            <button key={t.key} onClick={() => setActive(t.key)} style={s.tab(active === t.key)}>
-              <span style={{ fontSize: '1rem' }}>{t.label.split(' ')[0]}</span>
-              <span style={{ fontSize: '0.78rem' }}>{t.label.split(' ').slice(1).join(' ')}</span>
-            </button>
+      <div style={{ display: 'grid', gridTemplateColumns: '230px 1fr', gap: 20, alignItems: 'start' }}>
+        {/* Sidebar */}
+        <div style={{ position: 'sticky', top: 20 }}>
+          {CATEGORIES.map(cat => (
+            <div key={cat.label} style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: '0.63rem', fontWeight: 700, color: 'rgba(255,255,255,0.22)', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '2px 8px 6px' }}>{cat.label}</div>
+              {cat.templates.map(t => (
+                <button key={t.key} onClick={() => setActiveKey(t.key)} style={{
+                  padding: '9px 12px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700,
+                  fontSize: '0.79rem', width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3,
+                  background: activeKey === t.key ? '#E8B84B' : 'rgba(255,255,255,0.04)',
+                  color: activeKey === t.key ? '#000' : '#888',
+                }}>
+                  <span style={{ flex: 1 }}>{t.label.split(' ').slice(1).join(' ')}</span>
+                  {t.readonly && <span style={{ fontSize: '0.6rem', background: 'rgba(255,255,255,0.08)', color: '#555', padding: '1px 5px', borderRadius: 4 }}>código</span>}
+                </button>
+              ))}
+            </div>
           ))}
         </div>
 
         {/* Editor */}
-        {currentTemplate && (
+        {activeTemplate && (
           <div>
-            <div style={s.card}>
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, fontSize: '1rem', color: 'white', marginBottom: 4 }}>{currentTemplate.label}</div>
-                <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>{currentTemplate.desc}</div>
+            <div style={{ background: '#111', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 24, marginBottom: 14 }}>
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'white', marginBottom: 4 }}>{activeTemplate.label}</div>
+                <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>{activeTemplate.desc}</div>
               </div>
 
-              {/* Variables disponibles */}
-              <div style={{ marginBottom: 14 }}>
-                <span style={s.label}>Variables disponibles — hacé clic para insertar al final</span>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {currentTemplate.vars.map(v => (
-                    <button key={v} style={s.varBtn} onClick={() => insertVar(currentTemplate.key, v)}>{v}</button>
-                  ))}
+              {activeTemplate.readonly ? (
+                <div style={{ padding: '16px 18px', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 10 }}>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>Variables disponibles</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                    {activeTemplate.vars.map(v => <span key={v} style={{ padding:'4px 10px', borderRadius:6, background:'rgba(232,184,75,0.08)', border:'1px solid rgba(232,184,75,0.2)', color:'#E8B84B', fontSize:'0.75rem', fontWeight:700, fontFamily:'monospace' }}>{v}</span>)}
+                  </div>
+                  <div style={{ display:'flex', gap:8, padding:'10px 12px', background:'rgba(232,184,75,0.05)', border:'1px solid rgba(232,184,75,0.15)', borderRadius:8 }}>
+                    <span>🔒</span>
+                    <span style={{ fontSize:'0.8rem', color:'rgba(255,255,255,0.45)', lineHeight:1.5 }}>{activeTemplate.note}</span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div style={{ marginBottom: 12 }}>
+                    <span style={{ fontSize:'0.68rem', fontWeight:700, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:'0.1em', display:'block', marginBottom:6 }}>Variables — clic para insertar</span>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                      {activeTemplate.vars.map(v => <button key={v} style={{ padding:'4px 10px', borderRadius:6, background:'rgba(232,184,75,0.1)', border:'1px solid rgba(232,184,75,0.25)', color:'#E8B84B', fontSize:'0.75rem', fontWeight:700, cursor:'pointer', fontFamily:'monospace' }} onClick={() => insertVar(activeTemplate.key, v)}>{v}</button>)}
+                    </div>
+                  </div>
 
-              <span style={s.label}>Mensaje</span>
-              <textarea
-                value={templates[currentTemplate.key] || ''}
-                onChange={e => setTemplates(t => ({ ...t, [currentTemplate.key]: e.target.value }))}
-                style={s.textarea}
-                rows={10}
-              />
+                  <span style={{ fontSize:'0.68rem', fontWeight:700, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:'0.1em', display:'block', marginBottom:6 }}>Mensaje</span>
+                  <textarea
+                    value={templates[activeTemplate.key] || ''}
+                    onChange={e => setTemplates(t => ({ ...t, [activeTemplate.key]: e.target.value }))}
+                    style={{ width:'100%', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, color:'white', padding:'14px', fontSize:'0.88rem', outline:'none', resize:'vertical', fontFamily:'monospace', lineHeight:1.6, boxSizing:'border-box', minHeight:180 }}
+                    rows={9}
+                  />
 
-              {/* Preview */}
-              <div style={{ marginTop: 14, padding: '12px 16px', background: '#0a0a0a', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'rgba(255,255,255,0.2)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Preview (ejemplo)</div>
-                <div style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.6)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                  {(templates[currentTemplate.key] || '')
-                    .replace('{nombre}', 'Gianfranco')
-                    .replace('{codigo}', 'jz-abc4')
-                    .replace('{total}', '$15.000')
-                    .replace('{items}', '  • CAVA Simple ×1 — $12.000\n  • JANZ Doble ×1 — $15.000')
-                    .replace('{descuento}', '\n🎟️ Cupón JANZ10: -$1.500')
-                    .replace('{metodoPago}', '\n💵 Tené listo $15.000 en efectivo.')
-                    .replace('{alias}', 'janzburgers')
-                    .replace('{tiempoEstimado}', '\n⏱️ Tiempo estimado: 25 minutos.')
-                    .replace('{tipoEntrega}', 'delivery')
-                  }
-                </div>
-              </div>
+                  <div style={{ marginTop:14, padding:'12px 16px', background:'#0a0a0a', borderRadius:10, border:'1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ fontSize:'0.65rem', fontWeight:700, color:'rgba(255,255,255,0.18)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:8 }}>Preview con datos de ejemplo</div>
+                    <div style={{ fontSize:'0.82rem', color:'rgba(255,255,255,0.55)', whiteSpace:'pre-wrap', lineHeight:1.6 }}>{fillPreview(templates[activeTemplate.key] || '')}</div>
+                  </div>
 
-              <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-                <button onClick={() => reset(currentTemplate.key)} style={{ padding: '10px 18px', borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#666', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
-                  ↩️ Restaurar default
-                </button>
-                <button onClick={() => save(currentTemplate.key)} disabled={saving === currentTemplate.key} style={{ flex: 1, padding: '10px 18px', borderRadius: 10, background: saving === currentTemplate.key ? '#222' : '#E8B84B', border: 'none', color: saving === currentTemplate.key ? '#555' : '#000', fontWeight: 800, cursor: saving === currentTemplate.key ? 'not-allowed' : 'pointer', fontSize: '0.9rem' }}>
-                  {saving === currentTemplate.key ? 'Guardando...' : '💾 Guardar cambios'}
-                </button>
-              </div>
+                  <div style={{ display:'flex', gap:10, marginTop:16 }}>
+                    <button onClick={() => reset(activeTemplate.key)} style={{ padding:'10px 18px', borderRadius:10, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color:'#666', fontWeight:600, cursor:'pointer', fontSize:'0.85rem' }}>↩️ Default</button>
+                    <button onClick={() => save(activeTemplate.key)} disabled={saving === activeTemplate.key} style={{ flex:1, padding:'10px 18px', borderRadius:10, background: saving === activeTemplate.key ? '#222' : '#E8B84B', border:'none', color: saving === activeTemplate.key ? '#555' : '#000', fontWeight:800, cursor: saving === activeTemplate.key ? 'not-allowed' : 'pointer', fontSize:'0.9rem' }}>
+                      {saving === activeTemplate.key ? 'Guardando...' : '💾 Guardar cambios'}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
 
-            <div style={{ padding: '14px 18px', background: 'rgba(232,184,75,0.06)', border: '1px solid rgba(232,184,75,0.15)', borderRadius: 12, fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', lineHeight: 1.7 }}>
-              💡 <strong style={{ color: '#E8B84B' }}>Tip:</strong> El texto entre <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 6px', borderRadius: 4 }}>*asteriscos*</code> se muestra en <strong>negrita</strong> en WhatsApp. Usá <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 6px', borderRadius: 4 }}>_guiones bajos_</code> para <em>cursiva</em>.
-            </div>
+            {!activeTemplate.readonly && (
+              <div style={{ padding:'14px 18px', background:'rgba(232,184,75,0.05)', border:'1px solid rgba(232,184,75,0.15)', borderRadius:12, fontSize:'0.8rem', color:'rgba(255,255,255,0.4)', lineHeight:1.7 }}>
+                💡 <strong style={{ color:'#E8B84B' }}>Formato WhatsApp:</strong>{' '}
+                <code style={{ background:'rgba(255,255,255,0.08)', padding:'1px 6px', borderRadius:4 }}>*texto*</code> = <strong>negrita</strong> · <code style={{ background:'rgba(255,255,255,0.08)', padding:'1px 6px', borderRadius:4 }}>_texto_</code> = <em>cursiva</em> · <code style={{ background:'rgba(255,255,255,0.08)', padding:'1px 6px', borderRadius:4 }}>~texto~</code> = <s>tachado</s>
+              </div>
+            )}
           </div>
         )}
       </div>

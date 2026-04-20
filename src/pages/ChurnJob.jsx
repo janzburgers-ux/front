@@ -14,11 +14,15 @@ const DEFAULT_CONFIG = {
 };
 
 const SCHEDULE_PRESETS = [
-  { label: 'Todos los lunes a las 10am',    value: '0 10 * * 1' },
-  { label: 'Lunes y jueves a las 11am',     value: '0 11 * * 1,4' },
-  { label: 'Todos los días a las 9am',      value: '0 9 * * *' },
-  { label: 'Cada 3 días a las 10am',        value: '0 10 */3 * *' },
-  { label: 'Manual (solo disparo a mano)',  value: 'manual' },
+  { label: 'Todos los lunes a las 10am',       value: '0 10 * * 1' },
+  { label: 'Lunes y jueves a las 11am',        value: '0 11 * * 1,4' },
+  { label: 'Viernes a las 14hs',               value: '0 14 * * 5' },
+  { label: 'Cada 2 días a las 10am',           value: '0 10 */2 * *' },
+  { label: 'Cada 3 días a las 10am',           value: '0 10 */3 * *' },
+  { label: 'Semanal — domingos 11am',          value: '0 11 * * 0' },
+  { label: 'Quincenal — días 1 y 15 a las 10am', value: '0 10 1,15 * *' },
+  { label: 'Mensual — día 1 a las 10am',       value: '0 10 1 * *' },
+  { label: 'Manual (solo disparo a mano)',      value: 'manual' },
 ];
 
 const VAR_TAGS = [

@@ -30,19 +30,29 @@ function fmtHora(date) {
 function calcDeadlines(order) {
   const confirmedMins = order.confirmedMinutes || order.estimatedMinutes || TARGET_MINUTES;
   const deliveryMins  = order.deliveryMinutes || 15;
-  const cookMins      = confirmedMins - deliveryMins;
+  const cookMins      = Math.max(1, confirmedMins - deliveryMins);
 
-  // Para pedidos programados: trabajar hacia atrás desde scheduledFor
+  // Pedidos programados: si ya comenzó la cocción, contar desde cookingStartedAt
+  // Si todavía no empezó, mostrar cuenta regresiva hasta scheduledFor
   if (order.isScheduled && order.scheduledFor) {
+    if (order.cookingStartedAt) {
+      // Ya inició cocción → contar desde cookingStartedAt
+      const cookStart  = new Date(order.cookingStartedAt);
+      const readyAt    = new Date(cookStart.getTime() + cookMins * 60000);
+      const deliveryAt = new Date(cookStart.getTime() + confirmedMins * 60000);
+      return { readyAt, deliveryAt, cookMins, deliveryMins, mode: 'cooking' };
+    }
+    // Aún no inició → mostrar hora programada
     const deliveryAt = new Date(order.scheduledFor);
     const readyAt    = new Date(deliveryAt.getTime() - deliveryMins * 60000);
-    return { readyAt, deliveryAt, cookMins, deliveryMins };
+    return { readyAt, deliveryAt, cookMins, deliveryMins, mode: 'scheduled' };
   }
 
-  const base       = new Date(order.receivedAt || order.createdAt);
+  // Pedido normal: contar desde confirmedAt si existe, sino desde createdAt
+  const base       = new Date(order.confirmedAt || order.receivedAt || order.createdAt);
   const readyAt    = new Date(base.getTime() + cookMins * 60000);
   const deliveryAt = new Date(base.getTime() + confirmedMins * 60000);
-  return { readyAt, deliveryAt, cookMins, deliveryMins };
+  return { readyAt, deliveryAt, cookMins, deliveryMins, mode: 'normal' };
 }
 
 function CountdownDisplay({ order }) {
@@ -497,24 +507,30 @@ export default function Kitchen() {
   const [orders, setOrders]       = useState([]);
   const [loading, setLoading]     = useState(true);
   const [connected, setConnected] = useState(false);
+  const [newOrderAlert, setNewOrderAlert] = useState(null); // { orderNumber, clientName }
   const socketRef = useRef(null);
+  const alertTimerRef = useRef(null);
 
   function playSound() {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const beep = (freq, startTime, duration) => {
+      const beep = (freq, startTime, duration, vol = 0.5) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain); gain.connect(ctx.destination);
         osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, startTime);
-        gain.gain.setValueAtTime(0.4, startTime);
+        gain.gain.setValueAtTime(vol, startTime);
         gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
         osc.start(startTime); osc.stop(startTime + duration);
       };
-      beep(880,  ctx.currentTime,       0.15);
-      beep(1100, ctx.currentTime + 0.2, 0.15);
-      beep(1320, ctx.currentTime + 0.4, 0.25);
+      // Triple beep más notorio
+      beep(880,  ctx.currentTime,       0.18);
+      beep(1100, ctx.currentTime + 0.22, 0.18);
+      beep(1320, ctx.currentTime + 0.44, 0.28);
+      beep(880,  ctx.currentTime + 0.8,  0.18);
+      beep(1100, ctx.currentTime + 1.02, 0.18);
+      beep(1320, ctx.currentTime + 1.24, 0.28);
     } catch {}
   }
 
@@ -537,6 +553,10 @@ export default function Kitchen() {
         return [order, ...prev];
       });
       playSound();
+      // Banner visual persistente (10 segundos)
+      setNewOrderAlert({ orderNumber: order.orderNumber, clientName: order.client?.name });
+      if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
+      alertTimerRef.current = setTimeout(() => setNewOrderAlert(null), 10000);
       toast.success(`🆕 Nuevo pedido: ${order.orderNumber} — ${order.client?.name}`, { duration: 6000 });
     });
     socket.on('order_updated', ({ orderId, status, order: updatedOrder }) => {
@@ -599,6 +619,23 @@ export default function Kitchen() {
           <button className="btn btn-secondary btn-sm" onClick={fetchOrders}>↻ Actualizar</button>
         </div>
       </div>
+
+      {/* Banner de alerta nuevo pedido */}
+      {newOrderAlert && (
+        <div onClick={() => setNewOrderAlert(null)} style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+          background: 'linear-gradient(90deg, #e8b84b, #f59e0b)',
+          color: '#000', padding: '14px 24px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          fontWeight: 800, fontSize: '1.05rem', cursor: 'pointer',
+          boxShadow: '0 4px 24px rgba(232,184,75,0.5)',
+          animation: 'pulse 0.8s infinite alternate',
+        }}>
+          <span>🆕 NUEVO PEDIDO — {newOrderAlert.orderNumber} · {newOrderAlert.clientName}</span>
+          <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Toca para cerrar</span>
+        </div>
+      )}
+      <style>{`@keyframes pulse { from { opacity: 1; } to { opacity: 0.85; } }`}</style>
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>

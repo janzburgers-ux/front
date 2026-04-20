@@ -210,9 +210,18 @@ export default function Layout() {
   const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('sidebarCollapsed') === 'true'; } catch { return false; }
+  });
   const [lowStockCount, setLowStockCount] = useState(0);
   const [unseenCount, setUnseenCount] = useState(0);
   const [showAlerts, setShowAlerts] = useState(false);
+
+  const toggleCollapse = () => setSidebarCollapsed(v => {
+    const next = !v;
+    try { localStorage.setItem('sidebarCollapsed', next); } catch {}
+    return next;
+  });
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -234,7 +243,7 @@ export default function Layout() {
   const closeSidebar = () => setSidebarOpen(false);
 
   return (
-    <div className="layout">
+    <div className={`layout${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
       <div className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`} onClick={closeSidebar} />
 
       {showAlerts && (
@@ -243,13 +252,18 @@ export default function Layout() {
       )}
       {showAlerts && <AlertsPanel onClose={() => setShowAlerts(false)} />}
 
-      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}${sidebarCollapsed ? ' collapsed' : ''}`}>
         <div className="sidebar-logo" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontFamily: 'Bebas Neue', fontSize: '1.8rem', color: 'white' }}>
-            JANZ<span style={{ color: 'var(--gold)' }}>BURGERS</span>
-          </h2>
-          <button onClick={closeSidebar} style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', display: 'flex', padding: 4 }}>
-            <X size={20} />
+          {!sidebarCollapsed && (
+            <h2 style={{ fontFamily: 'Bebas Neue', fontSize: '1.8rem', color: 'white' }}>
+              JANZ<span style={{ color: 'var(--gold)' }}>BURGERS</span>
+            </h2>
+          )}
+          {/* Mobile: close button / Desktop: collapse toggle */}
+          <button onClick={window.innerWidth < 768 ? closeSidebar : toggleCollapse}
+            title={sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
+            style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', display: 'flex', padding: 4, marginLeft: sidebarCollapsed ? 'auto' : undefined }}>
+            {window.innerWidth < 768 ? <X size={20} /> : sidebarCollapsed ? <Menu size={18} /> : <X size={18} />}
           </button>
         </div>
 
@@ -269,7 +283,7 @@ export default function Layout() {
             if (group.adminOnly && !isAdmin) return null;
             return (
               <div key={group.label}>
-                <div className="nav-section-label">{group.label}</div>
+                {!sidebarCollapsed && <div className="nav-section-label">{group.label}</div>}
                 {group.items.map(item => {
                   if (item.adminOnly && !isAdmin) return null;
                   const showBadge = item.to === '/gestion/stock' && lowStockCount > 0;
@@ -281,13 +295,17 @@ export default function Layout() {
                       className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
                       onClick={closeSidebar}
                       style={{ position: 'relative' }}
+                      title={sidebarCollapsed ? item.label : undefined}
                     >
                       <item.icon size={16} />
-                      {item.label}
-                      {showBadge && (
+                      {!sidebarCollapsed && item.label}
+                      {!sidebarCollapsed && showBadge && (
                         <span style={{ marginLeft: 'auto', background: unseenCount > 0 ? '#ef4444' : '#f59e0b', color: 'white', borderRadius: 100, fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px' }}>
                           {lowStockCount}
                         </span>
+                      )}
+                      {sidebarCollapsed && showBadge && (
+                        <span style={{ position: 'absolute', top: 4, right: 4, width: 8, height: 8, borderRadius: '50%', background: unseenCount > 0 ? '#ef4444' : '#f59e0b' }} />
                       )}
                     </NavLink>
                   );

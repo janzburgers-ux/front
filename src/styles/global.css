@@ -55,10 +55,15 @@ h1, h2, h3 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.05em; }
   background: var(--dark); border-right: 1px solid var(--border);
   display: flex; flex-direction: column;
   position: fixed; top: 0; left: 0; z-index: 200;
-  transition: transform var(--transition); overflow: hidden;
+  transition: width 0.25s ease, transform var(--transition); overflow: hidden;
 }
+/* Sidebar colapsada en desktop */
+.sidebar.collapsed { width: 56px; }
+.sidebar.collapsed .nav-item { justify-content: center; padding: 10px 0; }
+.sidebar.collapsed .sidebar-footer { padding: 10px 8px; }
+.layout.sidebar-collapsed .main-content { margin-left: 56px; }
 .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 199; backdrop-filter: blur(4px); }
-.main-content { margin-left: var(--sidebar-width); flex: 1; min-width: 0; overflow-x: hidden; }
+.main-content { margin-left: var(--sidebar-width); flex: 1; min-width: 0; overflow-x: hidden; transition: margin-left 0.25s ease; }
 .page-header {
   padding: 16px 32px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
