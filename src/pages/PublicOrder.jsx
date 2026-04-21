@@ -491,7 +491,7 @@ export default function PublicOrder() {
   };
 
   const handleSaveUpdate = async () => {
-    if (!updateForm.nickname.trim()) { toast.error('¿Cómo queremos llamarte? 😊'); return; }
+    if (!updateForm.nickname.trim()) { toast.error('¿Cómo queres que te llamemos? 😊'); return; }
     try {
       await API.patch('/public/client-update', {
         wa:           client.whatsapp,
@@ -1148,7 +1148,7 @@ export default function PublicOrder() {
             <div style={{ color: '#555', fontSize: '0.82rem', marginBottom: 24 }}>Paso 2 de 3</div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>¿Cómo queremos llamarte? *</label>
+              <label style={labelStyle}>¿Cómo queres que te llamemos? *</label>
               <input value={client.nickname} onChange={e => setClient(c => ({ ...c, nickname: e.target.value }))}
                 placeholder="Tu apodo" style={inputStyle} autoFocus />
               <div style={{ fontSize: '0.72rem', color: '#444', marginTop: 5 }}>Así te vamos a saludar en cada pedido 😊</div>
