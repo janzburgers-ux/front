@@ -210,9 +210,40 @@ export default function PublicOrder() {
   const [transferAlias, setTransferAlias]               = useState('');
   const [notesPlaceholder, setNotesPlaceholder]         = useState('Aclaraciones, alergias...');
   const [paymentMethod, setPaymentMethod]               = useState('');
+
+  // ── Auth state ──────────────────────────────────────────────────────────────
+  // 'phone' | 'verify-pin' | 'update' | 'returning' | 'new'
+  const [authStep, setAuthStep]                         = useState(() => {
+    try {
+      const saved = localStorage.getItem('janz_client_data');
+      if (saved) { const p = JSON.parse(saved); if (p.whatsapp) return 'returning'; }
+    } catch {}
+    return 'phone';
+  });
+  const [waInput, setWaInput]                           = useState('');
+  const [waLooking, setWaLooking]                       = useState(false);
+  const [pinInput, setPinInput]                         = useState('');
+  const [pinSending, setPinSending]                     = useState(false);
+  const [pinVerifying, setPinVerifying]                 = useState(false);
+  const [pinCountdown, setPinCountdown]                 = useState(0);
+  const pinTimerRef                                     = useRef(null);
+  // Datos de migración (cliente existente sin nickname)
+  const [updateForm, setUpdateForm]                     = useState({ nickname: '', birthDay: '', birthMonth: '', birthSkipped: false });
+
   const [client, setClient]                             = useState(() => {
-    try { const saved = localStorage.getItem('janz_client_data'); if (saved) { const p = JSON.parse(saved); return { name: p.name || '', whatsapp: p.whatsapp || '', address: p.address || '', floor: p.floor || '', references: p.references || '', notes: '' }; } } catch {}
-    return { name: '', whatsapp: '', address: '', floor: '', references: '', notes: '' };
+    try {
+      const saved = localStorage.getItem('janz_client_data');
+      if (saved) {
+        const p = JSON.parse(saved);
+        return {
+          name: p.name || '', nickname: p.nickname || '', whatsapp: p.whatsapp || '',
+          address: p.address || '', floor: p.floor || '', references: p.references || '',
+          notes: '', birthDay: '', birthMonth: '', birthSkipped: false,
+          useAltAddress: false
+        };
+      }
+    } catch {}
+    return { name: '', nickname: '', whatsapp: '', address: '', floor: '', references: '', notes: '', birthDay: '', birthMonth: '', birthSkipped: false, useAltAddress: false };
   });
   const [scheduledFor, setScheduledFor]                 = useState('asap');
   const [hourlyDiscount, setHourlyDiscount]             = useState(null);
@@ -378,13 +409,119 @@ export default function PublicOrder() {
     else setCart(c => c.map(i => i.product === productId ? { ...i, quantity: i.quantity - 1 } : i));
   };
 
+  // ── Funciones de autenticación ────────────────────────────────────────────
+  const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+  const startPinCountdown = () => {
+    setPinCountdown(600); // 10 min en segundos
+    if (pinTimerRef.current) clearInterval(pinTimerRef.current);
+    pinTimerRef.current = setInterval(() => {
+      setPinCountdown(c => { if (c <= 1) { clearInterval(pinTimerRef.current); return 0; } return c - 1; });
+    }, 1000);
+  };
+
+  const handleWaLookup = async () => {
+    const wa = waInput.replace(/\D/g, '');
+    if (wa.length < 8) { toast.error('Ingresá un número válido'); return; }
+    setWaLooking(true);
+    try {
+      // Verificar si el WA guardado en localStorage coincide → cliente known sin PIN
+      const saved = localStorage.getItem('janz_client_data');
+      const savedWa = saved ? JSON.parse(saved)?.whatsapp?.replace(/\D/g, '') : null;
+
+      const res = await API.get(`/public/client?wa=${wa}`);
+
+      if (res.data.found) {
+        // Cliente existe en DB
+        const d = res.data;
+        setClient(c => ({
+          ...c, whatsapp: wa, name: d.name, nickname: d.nickname,
+          address: d.address, floor: d.floor,
+          neighborhood: d.neighborhood, references: d.references,
+        }));
+        localStorage.setItem('janz_client_data', JSON.stringify({ whatsapp: wa, name: d.name, nickname: d.nickname, address: d.address, floor: d.floor, references: d.references }));
+
+        if (!d.hasNickname) {
+          // Cliente viejo sin apodo → pantalla de migración
+          setUpdateForm({ nickname: d.name?.split(' ')[0] || '', birthDay: '', birthMonth: '', birthSkipped: false });
+          setAuthStep('update');
+        } else {
+          setAuthStep('returning');
+        }
+      } else {
+        // Cliente nuevo → mandar PIN
+        setPinSending(true);
+        try {
+          await API.post('/public/send-pin', { wa });
+          setClient(c => ({ ...c, whatsapp: wa }));
+          setAuthStep('verify-pin');
+          startPinCountdown();
+          toast.success('Te mandamos un código por WhatsApp 📲');
+        } finally { setPinSending(false); }
+      }
+    } catch (e) {
+      toast.error('Error al verificar. Intentá de nuevo.');
+    } finally { setWaLooking(false); }
+  };
+
+  const handleVerifyPin = async () => {
+    if (pinInput.length !== 4) { toast.error('El código tiene 4 dígitos'); return; }
+    setPinVerifying(true);
+    try {
+      const res = await API.post('/public/verify-pin', { wa: client.whatsapp, pin: pinInput });
+      if (res.data.valid) {
+        setAuthStep('new');
+        toast.success('¡Verificado! Completá tus datos 🎉');
+      } else {
+        toast.error(res.data.message || 'Código incorrecto');
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Código incorrecto o expirado');
+    } finally { setPinVerifying(false); }
+  };
+
+  const handleResendPin = async () => {
+    setPinSending(true);
+    try {
+      await API.post('/public/send-pin', { wa: client.whatsapp });
+      startPinCountdown();
+      toast.success('Código reenviado 📲');
+    } catch { toast.error('Error al reenviar'); }
+    finally { setPinSending(false); }
+  };
+
+  const handleSaveUpdate = async () => {
+    if (!updateForm.nickname.trim()) { toast.error('¿Cómo queremos llamarte? 😊'); return; }
+    try {
+      await API.patch('/public/client-update', {
+        wa:           client.whatsapp,
+        nickname:     updateForm.nickname.trim(),
+        birthDay:     updateForm.birthDay   || undefined,
+        birthMonth:   updateForm.birthMonth || undefined,
+        birthSkipped: updateForm.birthSkipped,
+      });
+      setClient(c => ({ ...c, nickname: updateForm.nickname.trim(), birthDay: updateForm.birthDay, birthMonth: updateForm.birthMonth }));
+      localStorage.setItem('janz_client_data', JSON.stringify({ ...JSON.parse(localStorage.getItem('janz_client_data') || '{}'), nickname: updateForm.nickname.trim() }));
+      setAuthStep('returning');
+      toast.success(`¡Listo ${updateForm.nickname}! 🎉`);
+    } catch { toast.error('Error al guardar'); }
+  };
+
+  const handleResetAuth = () => {
+    localStorage.removeItem('janz_client_data');
+    setClient({ name: '', nickname: '', whatsapp: '', address: '', floor: '', references: '', notes: '', birthDay: '', birthMonth: '', birthSkipped: false, useAltAddress: false });
+    setWaInput(''); setPinInput(''); setAuthStep('phone');
+  };
+
   const validateEntrega = () => {
     if (deliveryType === 'delivery' && zones.length > 0 && !selectedZone) { toast.error('Seleccioná tu zona de delivery'); return false; }
     return true;
   };
   const validateDatos = () => {
-    if (!client.name || !client.whatsapp) { toast.error('Nombre y WhatsApp son obligatorios'); return false; }
-    if (deliveryType === 'delivery' && !client.address) { toast.error('Ingresá tu dirección'); return false; }
+    if (!client.nickname?.trim()) { toast.error('¿Cómo queremos llamarte? 😊'); return false; }
+    if (!client.name?.trim()) { toast.error('Ingresá tu nombre completo'); return false; }
+    if (!client.whatsapp) { toast.error('WhatsApp es obligatorio'); return false; }
+    if (deliveryType === 'delivery' && !client.address && !client.useAltAddress) { toast.error('Ingresá tu dirección'); return false; }
     return true;
   };
   const validatePago = () => {
@@ -417,7 +554,14 @@ export default function PublicOrder() {
 
   const handleNextStep = () => {
     if (step === 'entrega' && validateEntrega()) setStep('datos');
-    else if (step === 'datos' && validateDatos()) setStep('pago');
+    else if (step === 'datos') {
+      // Solo avanzar si el auth está completo (returning o new)
+      if (authStep === 'phone' || authStep === 'verify-pin' || authStep === 'update') {
+        toast.error('Completá tu identificación primero');
+        return;
+      }
+      if (validateDatos()) setStep('pago');
+    }
     else if (step === 'pago' && validatePago()) setShowConfirmModal(true);
   };
 
@@ -433,14 +577,18 @@ export default function PublicOrder() {
     setShowConfirmModal(false);
     setSubmitting(true);        // ← el modal aparece acá, antes de la llamada al backend
     try {
+      const finalAddr    = client.useAltAddress ? (client.altAddress    || client.address)    : client.address;
+      const finalFloor   = client.useAltAddress ? (client.altFloor      || client.floor)      : client.floor;
+      const finalRefs    = client.useAltAddress ? (client.altReferences || client.references) : client.references;
+      const clientPayload = { ...client, address: finalAddr, floor: finalFloor, references: finalRefs };
       const res = await API.post('/public/order', {
-        client, items: cart.map(i => ({ product: i.product, quantity: i.quantity, additionals: (i.additionals || []).map(a => ({ additional: a.additional, quantity: a.quantity })) })),
+        client: clientPayload, items: cart.map(i => ({ product: i.product, quantity: i.quantity, additionals: (i.additionals || []).map(a => ({ additional: a.additional, quantity: a.quantity })) })),
         deliveryType, paymentMethod, notes: client.notes, zone: selectedZone,
         scheduledFor: scheduledFor === 'asap' ? null : scheduledFor, isScheduled: scheduledFor !== 'asap',
-        deliveryAddress: deliveryType === 'delivery' ? [client.address, client.floor, client.references].filter(Boolean).join(' — ') : '',
+        deliveryAddress: deliveryType === 'delivery' ? [finalAddr, finalFloor, finalRefs].filter(Boolean).join(' — ') : '',
         couponCode: couponStatus?.valid ? couponCode.trim() : null
       });
-      try { localStorage.setItem('janz_client_data', JSON.stringify({ name: client.name, whatsapp: client.whatsapp, address: client.address, floor: client.floor, references: client.references })); } catch {}
+      try { localStorage.setItem('janz_client_data', JSON.stringify({ name: client.name, nickname: client.nickname, whatsapp: client.whatsapp, address: finalAddr, floor: finalFloor, references: finalRefs })); } catch {}
       try { localStorage.setItem('janz_pending_order', res.data.publicCode || res.data.orderNumber); } catch {}
       setPendingOrderCode(res.data.publicCode || res.data.orderNumber);
       setOrderResult(res.data); setOrderStatus('pending');
@@ -850,21 +998,203 @@ export default function PublicOrder() {
           </div>
         )}
 
-        {/* Paso 2: Datos */}
-        {step === 'datos' && (
+        {/* ── AUTH: Paso WhatsApp ───────────────────────────────────────── */}
+        {step === 'datos' && authStep === 'phone' && (
+          <div className="step-wrap">
+            <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'white', marginBottom: 4, letterSpacing: '-0.5px' }}>¿Cuál es tu WhatsApp?</div>
+            <div style={{ color: '#555', fontSize: '0.82rem', marginBottom: 24 }}>Lo usamos para avisarte de tu pedido 📲</div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Tu número de WhatsApp *</label>
+              <input
+                value={waInput} onChange={e => setWaInput(e.target.value.replace(/\D/g, ''))}
+                placeholder="Ej: 1123456789" type="tel" style={inputStyle}
+                onKeyDown={e => e.key === 'Enter' && handleWaLookup()}
+                autoFocus
+              />
+            </div>
+            <button onClick={handleWaLookup} disabled={waLooking || pinSending || !waInput}
+              style={{ width: '100%', padding: '14px', borderRadius: 12, background: GOLD, border: 'none', color: '#000', fontWeight: 800, fontSize: '1rem', cursor: waLooking ? 'not-allowed' : 'pointer' }}>
+              {waLooking || pinSending ? 'Buscando...' : 'Continuar →'}
+            </button>
+          </div>
+        )}
+
+        {/* ── AUTH: Verificar PIN (cliente nuevo) ───────────────────────── */}
+        {step === 'datos' && authStep === 'verify-pin' && (
+          <div className="step-wrap">
+            <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'white', marginBottom: 4, letterSpacing: '-0.5px' }}>Verificá tu WhatsApp</div>
+            <div style={{ color: '#555', fontSize: '0.85rem', marginBottom: 24 }}>
+              Te mandamos un código de 4 dígitos al <strong style={{ color: 'white' }}>+{client.whatsapp}</strong>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Código de verificación</label>
+              <input
+                value={pinInput} onChange={e => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                placeholder="_ _ _ _" type="tel" maxLength={4}
+                style={{ ...inputStyle, fontSize: '1.6rem', letterSpacing: '0.4em', textAlign: 'center' }}
+                onKeyDown={e => e.key === 'Enter' && handleVerifyPin()}
+                autoFocus
+              />
+            </div>
+            {pinCountdown > 0 && (
+              <div style={{ fontSize: '0.75rem', color: '#555', textAlign: 'center', marginBottom: 12 }}>
+                Expira en {Math.floor(pinCountdown / 60)}:{String(pinCountdown % 60).padStart(2, '0')}
+              </div>
+            )}
+            <button onClick={handleVerifyPin} disabled={pinVerifying || pinInput.length !== 4}
+              style={{ width: '100%', padding: '14px', borderRadius: 12, background: GOLD, border: 'none', color: '#000', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', marginBottom: 10 }}>
+              {pinVerifying ? 'Verificando...' : 'Verificar →'}
+            </button>
+            <button onClick={handleResendPin} disabled={pinSending || pinCountdown > 540}
+              style={{ width: '100%', padding: '10px', borderRadius: 10, background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: '#555', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}>
+              {pinSending ? 'Enviando...' : '↩️ Reenviar código'}
+            </button>
+            <button onClick={() => { setAuthStep('phone'); setPinInput(''); }}
+              style={{ width: '100%', marginTop: 8, padding: '8px', background: 'none', border: 'none', color: '#333', fontSize: '0.8rem', cursor: 'pointer' }}>
+              ← Cambiar número
+            </button>
+          </div>
+        )}
+
+        {/* ── AUTH: Actualizar datos (cliente viejo sin apodo) ──────────── */}
+        {step === 'datos' && authStep === 'update' && (
+          <div className="step-wrap">
+            <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'white', marginBottom: 4, letterSpacing: '-0.5px' }}>👋 ¡Te reconocemos!</div>
+            <div style={{ color: '#555', fontSize: '0.85rem', marginBottom: 24 }}>Completá estos datos para mejorar tu experiencia (solo una vez)</div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>¿Cómo queres que te llamemos? *</label>
+              <input value={updateForm.nickname} onChange={e => setUpdateForm(f => ({ ...f, nickname: e.target.value }))}
+                placeholder="Tu apodo" style={inputStyle} autoFocus />
+              <div style={{ fontSize: '0.72rem', color: '#444', marginTop: 5 }}>Así te vamos a saludar en cada pedido 😊</div>
+            </div>
+            <div style={{ marginBottom: 16, padding: '14px 16px', background: 'rgba(232,184,75,0.05)', border: '1px solid rgba(232,184,75,0.15)', borderRadius: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: GOLD, marginBottom: 12 }}>🎂 ¿Cuándo es tu cumple? <span style={{ color: '#444', fontWeight: 400 }}>(opcional)</span></div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <input type="number" min={1} max={31} value={updateForm.birthDay}
+                  onChange={e => setUpdateForm(f => ({ ...f, birthDay: e.target.value, birthSkipped: false }))}
+                  placeholder="Día" style={{ ...inputStyle, width: 80, textAlign: 'center' }} />
+                <select value={updateForm.birthMonth}
+                  onChange={e => setUpdateForm(f => ({ ...f, birthMonth: e.target.value, birthSkipped: false }))}
+                  style={{ ...inputStyle, flex: 1 }}>
+                  <option value="">Mes</option>
+                  {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+              </div>
+              {!updateForm.birthDay && !updateForm.birthMonth && (
+                <button onClick={() => setUpdateForm(f => ({ ...f, birthSkipped: true }))}
+                  style={{ marginTop: 8, background: 'none', border: 'none', color: '#333', fontSize: '0.78rem', cursor: 'pointer', padding: 0 }}>
+                  {updateForm.birthSkipped ? '✓ Preferí no compartirlo' : 'Prefiero no decir →'}
+                </button>
+              )}
+            </div>
+            <button onClick={handleSaveUpdate}
+              style={{ width: '100%', padding: '14px', borderRadius: 12, background: GOLD, border: 'none', color: '#000', fontWeight: 800, fontSize: '1rem', cursor: 'pointer' }}>
+              Guardar y continuar →
+            </button>
+          </div>
+        )}
+
+        {/* ── AUTH: Cliente conocido — banner bienvenida ────────────────── */}
+        {step === 'datos' && authStep === 'returning' && (
+          <div className="step-wrap">
+            {/* Banner bienvenida */}
+            <div style={{ padding: '16px 18px', background: 'rgba(232,184,75,0.07)', border: '1px solid rgba(232,184,75,0.2)', borderRadius: 14, marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '1rem', color: 'white' }}>👋 ¡Hola {client.nickname || client.name?.split(' ')[0]}! Como estas?</div>
+                <div style={{ fontSize: '0.78rem', color: '#555', marginTop: 2 }}> <FaWhatsapp></FaWhatsapp> {client.whatsapp}</div>
+              </div>
+              <button onClick={handleResetAuth}
+                style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: '#444', borderRadius: 8, padding: '6px 10px', fontSize: '0.75rem', cursor: 'pointer' }}>
+                No soy yo
+              </button>
+            </div>
+
+            {/* Dirección guardada vs nueva (solo delivery) */}
+            {deliveryType === 'delivery' && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>¿Dónde enviamos hoy?</label>
+                {client.address && (
+                  <button onClick={() => setClient(c => ({ ...c, useAltAddress: false }))}
+                    style={{ width: '100%', marginBottom: 8, padding: '12px 14px', borderRadius: 10, border: `2px solid ${!client.useAltAddress ? GOLD : 'rgba(255,255,255,0.08)'}`, background: !client.useAltAddress ? 'rgba(232,184,75,0.08)' : 'rgba(255,255,255,0.03)', color: !client.useAltAddress ? GOLD : '#555', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>
+                    📍 {client.address}{client.floor ? `, ${client.floor}` : ''} {!client.useAltAddress ? '✓' : ''}
+                  </button>
+                )}
+                <button onClick={() => setClient(c => ({ ...c, useAltAddress: true }))}
+                  style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: `2px solid ${client.useAltAddress ? GOLD : 'rgba(255,255,255,0.08)'}`, background: client.useAltAddress ? 'rgba(232,184,75,0.08)' : 'rgba(255,255,255,0.03)', color: client.useAltAddress ? GOLD : '#555', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>
+                  📍 Usar otra dirección {client.useAltAddress ? '✓' : ''}
+                </button>
+                {client.useAltAddress && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ marginBottom: 10 }}><input value={client.altAddress || ''} onChange={e => setClient(c => ({ ...c, altAddress: e.target.value }))} placeholder="Calle y número" style={inputStyle} /></div>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}><input value={client.altFloor || ''} onChange={e => setClient(c => ({ ...c, altFloor: e.target.value }))} placeholder="Piso / Depto" style={{ ...inputStyle, flex: 1 }} /></div>
+                    <input value={client.altReferences || ''} onChange={e => setClient(c => ({ ...c, altReferences: e.target.value }))} placeholder="Referencias (portón, timbre...)" style={inputStyle} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Notas del pedido</label>
+              <textarea value={client.notes} onChange={e => setClient(c => ({ ...c, notes: e.target.value }))}
+                placeholder={notesPlaceholder} rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+            </div>
+          </div>
+        )}
+
+        {/* ── AUTH: Cliente nuevo — form completo ──────────────────────── */}
+        {step === 'datos' && authStep === 'new' && (
           <div className="step-wrap">
             <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'white', marginBottom: 4, letterSpacing: '-0.5px' }}>Tus datos</div>
-            <div style={{ color: '#444', fontSize: '0.82rem', marginBottom: 24 }}>Paso 2 de 3</div>
-            <div style={{ marginBottom: 16 }}><label style={labelStyle}>Nombre y apellido *</label><input value={client.name} onChange={e => setClient(c => ({ ...c, name: e.target.value }))} placeholder="Tu nombre completo" style={inputStyle} /></div>
-            <div style={{ marginBottom: 16 }}><label style={labelStyle}>WhatsApp *</label><input value={client.whatsapp} onChange={e => setClient(c => ({ ...c, whatsapp: e.target.value }))} placeholder="Ej: 1123456789" type="tel" style={inputStyle} /></div>
+            <div style={{ color: '#555', fontSize: '0.82rem', marginBottom: 24 }}>Paso 2 de 3</div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>¿Cómo queremos llamarte? *</label>
+              <input value={client.nickname} onChange={e => setClient(c => ({ ...c, nickname: e.target.value }))}
+                placeholder="Tu apodo" style={inputStyle} autoFocus />
+              <div style={{ fontSize: '0.72rem', color: '#444', marginTop: 5 }}>Así te vamos a saludar en cada pedido 😊</div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Nombre y apellido completo *</label>
+              <input value={client.name} onChange={e => setClient(c => ({ ...c, name: e.target.value }))}
+                placeholder="Ej: Gianfranco Buzzelatto" style={inputStyle} />
+            </div>
+
             {deliveryType === 'delivery' && (
               <>
-                <div style={{ marginBottom: 16 }}><label style={labelStyle}>Dirección *</label><input value={client.address} onChange={e => setClient(c => ({ ...c, address: e.target.value }))} placeholder="Calle y número" style={inputStyle} /></div>
-                <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}><div style={{ flex: 1 }}><label style={labelStyle}>Piso / Depto</label><input value={client.floor} onChange={e => setClient(c => ({ ...c, floor: e.target.value }))} placeholder="Ej: 3° B" style={inputStyle} /></div></div>
-                <div style={{ marginBottom: 16 }}><label style={labelStyle}>Referencias</label><input value={client.references} onChange={e => setClient(c => ({ ...c, references: e.target.value }))} placeholder="Portón verde, timbre 2B..." style={inputStyle} /></div>
+                <div style={{ marginBottom: 10 }}><label style={labelStyle}>Dirección *</label><input value={client.address} onChange={e => setClient(c => ({ ...c, address: e.target.value }))} placeholder="Calle y número" style={inputStyle} /></div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}><input value={client.floor} onChange={e => setClient(c => ({ ...c, floor: e.target.value }))} placeholder="Piso / Depto" style={{ ...inputStyle, flex: 1 }} /></div>
+                <div style={{ marginBottom: 16 }}><input value={client.references} onChange={e => setClient(c => ({ ...c, references: e.target.value }))} placeholder="Referencias (portón verde, timbre 2B...)" style={inputStyle} /></div>
               </>
             )}
-            <div style={{ marginBottom: 16 }}><label style={labelStyle}>Notas del pedido</label><textarea value={client.notes} onChange={e => setClient(c => ({ ...c, notes: e.target.value }))} placeholder={notesPlaceholder} rows={3} style={{ ...inputStyle, resize: 'vertical' }} /></div>
+
+            {/* Cumpleaños */}
+            <div style={{ marginBottom: 16, padding: '14px 16px', background: 'rgba(232,184,75,0.05)', border: '1px solid rgba(232,184,75,0.15)', borderRadius: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: GOLD, marginBottom: 12 }}>🎂 ¿Cuándo es tu cumple? <span style={{ color: '#444', fontWeight: 400 }}>(opcional)</span></div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <input type="number" min={1} max={31} value={client.birthDay}
+                  onChange={e => setClient(c => ({ ...c, birthDay: e.target.value, birthSkipped: false }))}
+                  placeholder="Día" style={{ ...inputStyle, width: 80, textAlign: 'center' }} />
+                <select value={client.birthMonth}
+                  onChange={e => setClient(c => ({ ...c, birthMonth: e.target.value, birthSkipped: false }))}
+                  style={{ ...inputStyle, flex: 1 }}>
+                  <option value="">Mes</option>
+                  {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#444', marginTop: 8 }}>Te mandamos un cupón de 15% de descuento el día de tu cumple 🎁</div>
+              {!client.birthDay && !client.birthMonth && (
+                <button onClick={() => setClient(c => ({ ...c, birthSkipped: true }))}
+                  style={{ marginTop: 8, background: 'none', border: 'none', color: '#333', fontSize: '0.78rem', cursor: 'pointer', padding: 0 }}>
+                  {client.birthSkipped ? '✓ Preferí no compartirlo' : 'Prefiero no decir →'}
+                </button>
+              )}
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Notas del pedido</label>
+              <textarea value={client.notes} onChange={e => setClient(c => ({ ...c, notes: e.target.value }))}
+                placeholder={notesPlaceholder} rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+            </div>
           </div>
         )}
 
@@ -885,7 +1215,7 @@ export default function PublicOrder() {
             <div style={{ marginBottom: 24 }}>
               <label style={labelStyle}>🎟️ Cupón de descuento</label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input value={couponCode} onChange={e => { setCouponCode(e.target.value.toUpperCase()); setCouponStatus(null); }} placeholder="Ej: JANZ10" style={{ ...inputStyle, border: `1px solid ${couponStatus?.valid ? 'rgba(34,197,94,0.4)' : couponStatus?.valid === false ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}` }} />
+                <input value={couponCode} onChange={e => { setCouponCode(e.target.value.toUpperCase()); setCouponStatus(null); }} placeholder="Ej: JB-JANZ" style={{ ...inputStyle, border: `1px solid ${couponStatus?.valid ? 'rgba(34,197,94,0.4)' : couponStatus?.valid === false ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}` }} />
                 <button onClick={validateCoupon} disabled={validatingCoupon || !couponCode.trim()} style={{ background: 'rgba(232,184,75,0.1)', color: GOLD, border: '1px solid rgba(232,184,75,0.3)', padding: '10px 16px', borderRadius: 10, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>{validatingCoupon ? '...' : 'Aplicar'}</button>
               </div>
               {couponStatus && <div style={{ marginTop: 6, fontSize: '0.8rem', color: couponStatus.valid ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{couponStatus.valid ? '✅' : '❌'} {couponStatus.message}</div>}
