@@ -16,6 +16,7 @@ export default function PublicReview() {
   const [tempRating, setTemp]   = useState('');
   const [onTime, setOnTime]     = useState(null);
   const [comment, setComment]   = useState('');
+  const [npsScore, setNpsScore] = useState(null);
   const [submitting, setSub]    = useState(false);
   const [result, setResult]     = useState(null);
 
@@ -39,7 +40,7 @@ export default function PublicReview() {
     setSub(true);
     try {
       const res = await API.post(`/public/review/${publicCode}`, {
-        stars, burgerRating, tempRating, onTime, comment
+        stars, burgerRating, tempRating, onTime, comment, npsScore
       });
       setResult(res.data);
       setPhase('thanks');
@@ -215,6 +216,32 @@ export default function PublicReview() {
               <button key={String(v)} onClick={() => setOnTime(onTime === v ? null : v)} style={chipStyle(onTime === v)}>{l}</button>
             ))}
           </div>
+        </div>
+
+        {/* ¿Recomendarías Janz? NPS */}
+        <div style={{ marginBottom: 22 }}>
+          <span style={label}>¿Cuánto recomendarías Janz a un amigo?</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[1, 2, 3, 4, 5].map(n => (
+              <button
+                key={n}
+                onClick={() => setNpsScore(npsScore === n ? null : n)}
+                style={{
+                  flex: 1, padding: '11px 0', borderRadius: 10, fontWeight: 700,
+                  fontSize: '1rem', cursor: 'pointer', transition: 'all 0.15s',
+                  border: `1px solid ${npsScore === n ? GOLD : 'rgba(255,255,255,0.1)'}`,
+                  background: npsScore === n ? 'rgba(232,184,75,0.12)' : 'rgba(255,255,255,0.03)',
+                  color: npsScore === n ? GOLD : 'rgba(255,255,255,0.35)'
+                }}>
+                {n}
+              </button>
+            ))}
+          </div>
+          {npsScore && (
+            <div style={{ fontSize: '0.75rem', color: GOLD, marginTop: 7, fontWeight: 600 }}>
+              {['', '😕 Poco probable', '😐 Quizás', '🙂 Probablemente', '😊 Seguro', '🤩 ¡Definitivamente!'][npsScore]}
+            </div>
+          )}
         </div>
 
         {/* Comentario libre */}

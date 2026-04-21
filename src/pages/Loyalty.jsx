@@ -78,7 +78,7 @@ export default function Loyalty() {
     <>
       <div className="page-header">
         <h1><Star size={22} style={{ display: 'inline', marginRight: 10 }} color="var(--gold)" />Fidelización</h1>
-        <button className="btn btn-secondary" onClick={() => navigate('/configuracion')}>
+        <button className="btn btn-secondary" onClick={() => navigate('/gestion/configuracion')}>
           ⚙️ Configurar
         </button>
       </div>
@@ -105,7 +105,7 @@ export default function Loyalty() {
               </div>
             </div>
             {!loyaltyConfig.enabled && (
-              <button className="btn btn-primary btn-sm" onClick={() => navigate('/configuracion')}>
+              <button className="btn btn-primary btn-sm" onClick={() => navigate('/gestion/configuracion')}>
                 Activar <ChevronRight size={14}/>
               </button>
             )}

@@ -439,14 +439,25 @@ export default function PublicOrder() {
           address: d.address, floor: d.floor,
           neighborhood: d.neighborhood, references: d.references,
         }));
-        localStorage.setItem('janz_client_data', JSON.stringify({ whatsapp: wa, name: d.name, nickname: d.nickname, address: d.address, floor: d.floor, references: d.references }));
 
         if (!d.hasNickname) {
-          // Cliente viejo sin apodo → pantalla de migración
+          // Cliente viejo sin apodo → pantalla de migración (no requiere PIN)
+          localStorage.setItem('janz_client_data', JSON.stringify({ whatsapp: wa, name: d.name, nickname: d.nickname, address: d.address, floor: d.floor, references: d.references }));
           setUpdateForm({ nickname: d.name?.split(' ')[0] || '', birthDay: '', birthMonth: '', birthSkipped: false });
           setAuthStep('update');
-        } else {
+        } else if (savedWa && savedWa === wa) {
+          // Dispositivo reconocido (localStorage coincide) → sin PIN
+          localStorage.setItem('janz_client_data', JSON.stringify({ whatsapp: wa, name: d.name, nickname: d.nickname, address: d.address, floor: d.floor, references: d.references }));
           setAuthStep('returning');
+        } else {
+          // Dispositivo no reconocido (incógnito u otro equipo) → pedir PIN
+          setPinSending(true);
+          try {
+            await API.post('/public/send-pin', { wa });
+            setAuthStep('verify-pin');
+            startPinCountdown();
+            toast.success('Por seguridad, verificamos que el número sea tuyo 🔐');
+          } finally { setPinSending(false); }
         }
       } else {
         // Cliente nuevo → mandar PIN
@@ -470,8 +481,20 @@ export default function PublicOrder() {
     try {
       const res = await API.post('/public/verify-pin', { wa: client.whatsapp, pin: pinInput });
       if (res.data.valid) {
-        setAuthStep('new');
-        toast.success('¡Verificado! Completá tus datos 🎉');
+        // Si el cliente ya existía en DB (tiene nombre cargado) → va a returning
+        // Si es cliente nuevo (sin nombre aún) → va a new para completar datos
+        if (client.name) {
+          // Cliente existente verificado desde dispositivo no reconocido
+          localStorage.setItem('janz_client_data', JSON.stringify({
+            whatsapp: client.whatsapp, name: client.name, nickname: client.nickname,
+            address: client.address, floor: client.floor, references: client.references
+          }));
+          setAuthStep('returning');
+          toast.success(`¡Verificado! Bienvenido de vuelta ${client.nickname || client.name?.split(' ')[0]} 🎉`);
+        } else {
+          setAuthStep('new');
+          toast.success('¡Verificado! Completá tus datos 🎉');
+        }
       } else {
         toast.error(res.data.message || 'Código incorrecto');
       }
@@ -511,6 +534,51 @@ export default function PublicOrder() {
     localStorage.removeItem('janz_client_data');
     setClient({ name: '', nickname: '', whatsapp: '', address: '', floor: '', references: '', notes: '', birthDay: '', birthMonth: '', birthSkipped: false, useAltAddress: false });
     setWaInput(''); setPinInput(''); setAuthStep('phone');
+  };
+
+  // ── Editar perfil desde el flujo returning ──────────────────────────────────
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [editForm, setEditForm] = useState({ nickname: '', address: '', floor: '', references: '' });
+
+  const openEditProfile = () => {
+    setEditForm({
+      nickname:   client.nickname || '',
+      address:    client.address  || '',
+      floor:      client.floor    || '',
+      references: client.references || '',
+    });
+    setEditingProfile(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editForm.nickname.trim()) { toast.error('El apodo es obligatorio 😊'); return; }
+    try {
+      await API.patch('/public/client-update', {
+        wa:         client.whatsapp,
+        nickname:   editForm.nickname.trim(),
+      });
+      // Actualizar state y localStorage
+      const updated = {
+        ...client,
+        nickname:   editForm.nickname.trim(),
+        address:    editForm.address   || client.address,
+        floor:      editForm.floor     || client.floor,
+        references: editForm.references || client.references,
+      };
+      setClient(updated);
+      try {
+        const saved = JSON.parse(localStorage.getItem('janz_client_data') || '{}');
+        localStorage.setItem('janz_client_data', JSON.stringify({
+          ...saved,
+          nickname:   updated.nickname,
+          address:    updated.address,
+          floor:      updated.floor,
+          references: updated.references,
+        }));
+      } catch {}
+      setEditingProfile(false);
+      toast.success(`¡Datos actualizados! 🎉`);
+    } catch { toast.error('Error al guardar. Intentá de nuevo.'); }
   };
 
   const validateEntrega = () => {
@@ -1097,16 +1165,68 @@ export default function PublicOrder() {
         {/* ── AUTH: Cliente conocido — banner bienvenida ────────────────── */}
         {step === 'datos' && authStep === 'returning' && (
           <div className="step-wrap">
-            {/* Banner bienvenida */}
-            <div style={{ padding: '16px 18px', background: 'rgba(232,184,75,0.07)', border: '1px solid rgba(232,184,75,0.2)', borderRadius: 14, marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: '1rem', color: 'white' }}>👋 ¡Hola {client.nickname || client.name?.split(' ')[0]}! Como estas?</div>
-                <div style={{ fontSize: '0.78rem', color: '#555', marginTop: 2 }}> <FaWhatsapp></FaWhatsapp> {client.whatsapp}</div>
+
+            {/* Modal de edición de perfil */}
+            {editingProfile && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 200 }}>
+                <div style={{ background: '#0f0f0f', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 520, padding: 28, border: '1px solid rgba(255,255,255,0.08)', borderBottom: 'none' }}>
+                  <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 99, margin: '0 auto 20px' }} />
+                  <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'white', marginBottom: 20 }}>✏️ Editar mis datos</div>
+
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={labelStyle}>¿Cómo querés que te llamemos? *</label>
+                    <input
+                      value={editForm.nickname}
+                      onChange={e => setEditForm(f => ({ ...f, nickname: e.target.value }))}
+                      placeholder="Tu apodo"
+                      style={inputStyle}
+                      autoFocus
+                    />
+                  </div>
+
+                  {deliveryType === 'delivery' && (
+                    <>
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={labelStyle}>Dirección</label>
+                        <input value={editForm.address} onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))} placeholder="Calle y número" style={inputStyle} />
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                        <input value={editForm.floor} onChange={e => setEditForm(f => ({ ...f, floor: e.target.value }))} placeholder="Piso / Depto" style={{ ...inputStyle, flex: 1 }} />
+                      </div>
+                      <div style={{ marginBottom: 20 }}>
+                        <input value={editForm.references} onChange={e => setEditForm(f => ({ ...f, references: e.target.value }))} placeholder="Referencias (portón, timbre...)" style={inputStyle} />
+                      </div>
+                    </>
+                  )}
+
+                  <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                    <button onClick={() => setEditingProfile(false)} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: '#666', border: '1px solid rgba(255,255,255,0.08)', padding: '13px', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>
+                      Cancelar
+                    </button>
+                    <button onClick={handleSaveProfile} style={{ flex: 2, background: GOLD, color: '#000', border: 'none', padding: '13px', borderRadius: 10, fontWeight: 800, cursor: 'pointer', fontSize: '0.95rem' }}>
+                      Guardar cambios
+                    </button>
+                  </div>
+                </div>
               </div>
-              <button onClick={handleResetAuth}
-                style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: '#444', borderRadius: 8, padding: '6px 10px', fontSize: '0.75rem', cursor: 'pointer' }}>
-                No soy yo
-              </button>
+            )}
+
+            {/* Banner bienvenida */}
+            <div style={{ padding: '16px 18px', background: 'rgba(232,184,75,0.07)', border: '1px solid rgba(232,184,75,0.2)', borderRadius: 14, marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ fontWeight: 800, fontSize: '1rem', color: 'white' }}>👋 ¡Hola {client.nickname || client.name?.split(' ')[0]}! Como estas?</div>
+                <button onClick={handleResetAuth}
+                  style={{ background: 'none', border: '1px solid rgba(255,255,255,0.1)', color: '#444', borderRadius: 8, padding: '6px 10px', fontSize: '0.75rem', cursor: 'pointer', flexShrink: 0, marginLeft: 8 }}>
+                  No soy yo
+                </button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: '0.78rem', color: '#555' }}><FaWhatsapp style={{ display: 'inline', marginRight: 4 }} />{client.whatsapp}</div>
+                <button onClick={openEditProfile}
+                  style={{ background: 'none', border: 'none', color: GOLD, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', padding: 0, flexShrink: 0 }}>
+                  ✏️ Editar datos
+                </button>
+              </div>
             </div>
 
             {/* Dirección guardada vs nueva (solo delivery) */}
@@ -1335,7 +1455,7 @@ export default function PublicOrder() {
                 🔥 PROMO
               </div>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                {dailyDeal.image && <img src={dailyDeal.image} alt={dailyDeal.name} style={{ width: 56, height: 56, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />}
+                {dailyDeal.image && <img src={dailyDeal.image} alt={dailyDeal.name} style={{ width: 80, height: 80, borderRadius: 12, objectFit: 'cover', flexShrink: 0, border: '1px solid rgba(232,184,75,0.2)' }} />}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 900, color: '#E8B84B', fontSize: '1rem', letterSpacing: '-0.2px' }}>{dailyDeal.name || 'Promo del día'}</div>
                   {dailyDeal.description && <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', marginTop: 2, lineHeight: 1.4 }}>{dailyDeal.description}</div>}
@@ -1366,22 +1486,81 @@ export default function PublicOrder() {
           );
         })()}
 
-        {monthlyBurger && (
-          <div style={{ margin: '12px 16px 0', background: 'linear-gradient(135deg, rgba(129,140,248,0.10), rgba(129,140,248,0.03))', border: '1px solid rgba(129,140,248,0.25)', borderRadius: 14, padding: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ background: 'rgba(129,140,248,0.15)', color: '#818cf8', fontSize: '0.65rem', fontWeight: 800, padding: '3px 10px', borderRadius: 99, letterSpacing: '0.06em' }}>{monthlyBurger.badge || '🏆 Del mes'}</span>
-                  {monthlyBurger.month && <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)' }}>{monthlyBurger.month}</span>}
-                </div>
-                <div style={{ fontWeight: 900, color: 'white', fontSize: '1rem', letterSpacing: '-0.2px' }}>{monthlyBurger.name}</div>
-                {monthlyBurger.description && <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.45)', marginTop: 4, lineHeight: 1.5 }}>{monthlyBurger.description}</div>}
-                {monthlyBurger.price > 0 && <div style={{ color: '#818cf8', fontWeight: 800, fontSize: '0.95rem', marginTop: 6 }}>{fmt(monthlyBurger.price)}</div>}
+        {monthlyBurger && (() => {
+          const allProducts = Object.values(menu).flat();
+          const linkedMonthly = monthlyBurger.productId
+            ? allProducts.find(p => p._id === monthlyBurger.productId)
+            : null;
+          const monthlyInCart = linkedMonthly ? cart.find(i => i.product === linkedMonthly._id) : null;
+
+          return (
+            <div style={{
+              margin: '12px 16px 0',
+              background: 'linear-gradient(135deg, rgba(129,140,248,0.10), rgba(129,140,248,0.03))',
+              border: '1px solid rgba(129,140,248,0.3)',
+              borderRadius: 16, overflow: 'hidden'
+            }}>
+              {/* Stripe superior */}
+              <div style={{
+                background: 'linear-gradient(90deg, rgba(129,140,248,0.35), rgba(99,102,241,0.25))',
+                padding: '7px 14px', display: 'flex', alignItems: 'center', gap: 8,
+                borderBottom: '1px solid rgba(129,140,248,0.15)'
+              }}>
+                <span style={{ fontSize: '0.68rem', fontWeight: 900, color: '#a5b4fc', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  {monthlyBurger.badge || '🏆 Burger del Mes'}
+                </span>
+                {monthlyBurger.month && (
+                  <span style={{ fontSize: '0.68rem', color: 'rgba(165,180,252,0.5)', marginLeft: 'auto' }}>
+                    {monthlyBurger.month}
+                  </span>
+                )}
               </div>
-              {monthlyBurger.image && <img src={monthlyBurger.image} alt={monthlyBurger.name} style={{ width: 70, height: 70, borderRadius: 12, objectFit: 'cover', flexShrink: 0, border: '1px solid rgba(129,140,248,0.2)' }} />}
+              {/* Contenido */}
+              <div style={{ padding: 16, display: 'flex', gap: 14, alignItems: 'center' }}>
+                {monthlyBurger.image && (
+                  <img
+                    src={monthlyBurger.image}
+                    alt={monthlyBurger.name}
+                    style={{
+                      width: 88, height: 88, borderRadius: 14, objectFit: 'cover',
+                      flexShrink: 0, border: '2px solid rgba(129,140,248,0.25)'
+                    }}
+                  />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 900, color: 'white', fontSize: '1.05rem', letterSpacing: '-0.2px', lineHeight: 1.25 }}>
+                    {monthlyBurger.name}
+                  </div>
+                  {monthlyBurger.description && (
+                    <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', marginTop: 5, lineHeight: 1.5 }}>
+                      {monthlyBurger.description}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                    {monthlyBurger.price > 0 && (
+                      <div style={{ color: '#818cf8', fontWeight: 800, fontSize: '1rem' }}>
+                        {fmt(monthlyBurger.price)}
+                      </div>
+                    )}
+                    {linkedMonthly && open && (
+                      monthlyInCart ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+                          <button onClick={() => removeFromCart(linkedMonthly._id)} style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', fontSize: '1rem', cursor: 'pointer' }}>−</button>
+                          <span style={{ fontWeight: 800, minWidth: 18, textAlign: 'center', color: 'white' }}>{monthlyInCart.quantity}</span>
+                          <button onClick={() => handleAddToCart(linkedMonthly)} style={{ width: 30, height: 30, borderRadius: '50%', background: '#818cf8', border: 'none', color: 'white', fontSize: '1rem', cursor: 'pointer', fontWeight: 800 }}>+</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => handleAddToCart(linkedMonthly)} style={{ background: 'rgba(129,140,248,0.2)', color: '#a5b4fc', border: '1px solid rgba(129,140,248,0.35)', padding: '8px 16px', borderRadius: 10, fontWeight: 800, cursor: 'pointer', fontSize: '0.82rem', marginLeft: 'auto' }}>
+                          🛒 Pedir
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {!open && <div style={{ margin: '10px 16px 0', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '10px 14px', color: '#ef4444', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem' }}>🔴 En este momento no estamos tomando pedidos</div>}
 
