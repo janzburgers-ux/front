@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from "react";
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
@@ -35,6 +36,8 @@ import PushNotifications from './pages/PushNotifications';
 import PublicReview from './pages/PublicReview';
 import Reviews from './pages/Reviews';
 
+import { initAnalytics, trackPageView } from "./utils/analytics";
+
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="loading-screen"><div className="spinner"/></div>;
@@ -45,6 +48,18 @@ function ProtectedRoute({ children, adminOnly = false }) {
 
 function AppRoutes() {
   const { user } = useAuth();
+  const location = useLocation();
+
+  // 🔥 Inicializa GA UNA sola vez
+  useEffect(() => {
+    initAnalytics();
+  }, []);
+
+  // 🔥 Trackea cada cambio de ruta
+  useEffect(() => {
+    trackPageView(location.pathname + location.search);
+  }, [location]);
+
   return (
     <Routes>
       {/* Públicas */}
@@ -99,10 +114,13 @@ export default function App() {
       <BrowserRouter>
         <AppRoutes />
         <InstallBanner />
-        <Toaster position="top-right" toastOptions={{
-          style: { background: '#1a1a1a', color: '#fff', border: '1px solid #333' },
-          success: { iconTheme: { primary: '#E8B84B', secondary: '#1a1a1a' } }
-        }} />
+        <Toaster 
+          position="top-right" 
+          toastOptions={{
+            style: { background: '#1a1a1a', color: '#fff', border: '1px solid #333' },
+            success: { iconTheme: { primary: '#E8B84B', secondary: '#1a1a1a' } }
+          }} 
+        />
       </BrowserRouter>
     </AuthProvider>
   );
