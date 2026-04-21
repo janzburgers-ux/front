@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { useEffect } from "react";
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
+
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Orders from './pages/Orders';
@@ -36,13 +37,16 @@ import PushNotifications from './pages/PushNotifications';
 import PublicReview from './pages/PublicReview';
 import Reviews from './pages/Reviews';
 
-import { initAnalytics, trackPageView } from "./utils/analytics";
+// ✅ SOLO esto
+import { trackPageView } from "./utils/analytics";
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth();
+
   if (loading) return <div className="loading-screen"><div className="spinner"/></div>;
   if (!user) return <Navigate to="/gestion/login" replace />;
   if (adminOnly && user.role !== 'admin') return <Navigate to="/gestion/dashboard" replace />;
+
   return children;
 }
 
@@ -50,12 +54,7 @@ function AppRoutes() {
   const { user } = useAuth();
   const location = useLocation();
 
-  // 🔥 Inicializa GA UNA sola vez
-  useEffect(() => {
-    initAnalytics();
-  }, []);
-
-  // 🔥 Trackea cada cambio de ruta
+  // 🔥 Trackeo de navegación (clave para React)
   useEffect(() => {
     trackPageView(location.pathname + location.search);
   }, [location]);
@@ -68,10 +67,10 @@ function AppRoutes() {
       <Route path="/prode-publico" element={<PublicProde />} />
       <Route path="/resena/:publicCode" element={<PublicReview />} />
 
-      {/* Login de gestión */}
+      {/* Login */}
       <Route path="/gestion/login" element={user ? <Navigate to="/gestion/dashboard" /> : <Login />} />
 
-      {/* Protegidas bajo /gestion */}
+      {/* Privadas */}
       <Route path="/gestion" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<Navigate to="/gestion/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
@@ -114,12 +113,12 @@ export default function App() {
       <BrowserRouter>
         <AppRoutes />
         <InstallBanner />
-        <Toaster 
-          position="top-right" 
+        <Toaster
+          position="top-right"
           toastOptions={{
             style: { background: '#1a1a1a', color: '#fff', border: '1px solid #333' },
             success: { iconTheme: { primary: '#E8B84B', secondary: '#1a1a1a' } }
-          }} 
+          }}
         />
       </BrowserRouter>
     </AuthProvider>

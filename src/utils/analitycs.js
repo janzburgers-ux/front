@@ -1,12 +1,8 @@
-import ReactGA from "react-ga4";
-
-export const initAnalytics = () => {
-  ReactGA.initialize("G-3KZ6Y42ZHJ");
-};
-
 export const trackPageView = (path) => {
-  ReactGA.send({
-    hitType: "pageview",
-    page: path,
-  });
+  if (typeof window !== "undefined" && window.gtag) {
+    window.gtag('config', 'G-3KZ6Y42ZHJ', {
+      page_path: path,
+      page_title: document.title,
+    });
+  }
 };
