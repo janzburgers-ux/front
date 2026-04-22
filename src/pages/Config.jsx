@@ -82,18 +82,7 @@ export default function Config() {
   };
   const [waTemplates, setWaTemplates] = useState({ ...WA_DEFAULTS });
 
-  // ── Hamburguesa del día ───────────────────────────────────────────────────
-  const [dailyDeal, setDailyDeal] = useState({
-    enabled: false, name: '', description: '', originalPrice: 0,
-    discountPrice: 0, discountPercent: 0, fromHour: '19:00', toHour: '21:00',
-    image: '', productId: null
-  });
-
-  // ── Hamburguesa del mes ───────────────────────────────────────────────────
-  const [monthlyBurger, setMonthlyBurger] = useState({
-    enabled: false, name: '', description: '', price: 0,
-    image: '', badge: '🏆 Del mes', month: ''
-  });
+  // (dailyDeal y monthlyBurger se configuran desde el Escandallo — RecipeEditor)
 
   useEffect(() => {
     Promise.all([API.get('/config'), API.get('/auth/users'), API.get('/products').catch(() => ({ data: [] }))])
@@ -124,8 +113,6 @@ export default function Config() {
         if (cfg.hourlyDiscount) setHourlyDiscount(cfg.hourlyDiscount);
         if (cfg.cajaGoals) setCajaGoals(cfg.cajaGoals);
         if (cfg.reviewSettings) setReviewSettings(cfg.reviewSettings);
-        if (cfg.dailyDeal) setDailyDeal(cfg.dailyDeal);
-        if (cfg.monthlyBurger) setMonthlyBurger(cfg.monthlyBurger);
         if (cfg.whatsappTemplates) setWaTemplates(t => ({ ...t, ...cfg.whatsappTemplates }));
       })
       .finally(() => setLoading(false));
@@ -920,147 +907,17 @@ export default function Config() {
           </button>
         </Section>
 
-        {/* ── Hamburguesa del día ──────────────────────────────────────────── */}
-        <Section title="Hamburguesa del día (promo con countdown)" icon={Zap}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, padding: '14px 16px', background: 'var(--dark)', borderRadius: 10, border: `1px solid ${dailyDeal.enabled ? 'rgba(232,184,75,0.3)' : 'var(--border)'}` }}>
+        {/* ── Destacados del menú (redirige al escandallo) ──────────────────── */}
+        <Section title="Hamburguesa del día y del mes" icon={Zap}>
+          <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', padding: '16px 18px', background: 'rgba(232,184,75,0.04)', border: '1px solid rgba(232,184,75,0.15)', borderRadius: 12 }}>
+            <div style={{ fontSize: '1.4rem', lineHeight: 1 }}>☀️★</div>
             <div>
-              <div style={{ fontWeight: 700, color: dailyDeal.enabled ? 'var(--gold)' : 'var(--gray)', marginBottom: 2 }}>
-                {dailyDeal.enabled ? '🟢 Visible en el menú' : '⚪ Oculta'}
-              </div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Aparece como banner destacado en /pedido con countdown</div>
-            </div>
-            <button className={`btn btn-sm ${dailyDeal.enabled ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setDailyDeal(d => ({ ...d, enabled: !d.enabled }))}>
-              {dailyDeal.enabled ? 'Desactivar' : 'Activar'}
-            </button>
-          </div>
-
-          <div style={{ opacity: dailyDeal.enabled ? 1 : 0.5, pointerEvents: dailyDeal.enabled ? 'auto' : 'none' }}>
-            <div className="grid-2" style={{ marginBottom: 14 }}>
-              <div>
-                <label className="form-label">Nombre de la promo</label>
-                <input value={dailyDeal.name} onChange={e => setDailyDeal(d => ({ ...d, name: e.target.value }))} placeholder="Ej: CAVA del día" />
-              </div>
-              <div>
-                <label className="form-label">Vincular a producto (opcional)</label>
-                <select value={dailyDeal.productId || ''} onChange={e => setDailyDeal(d => ({ ...d, productId: e.target.value || null }))} style={{ width: '100%' }}>
-                  <option value="">Sin producto vinculado</option>
-                  {products.map(p => <option key={p._id} value={p._id}>{p.name} {p.variant}</option>)}
-                </select>
-              </div>
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <label className="form-label">Descripción</label>
-              <input value={dailyDeal.description} onChange={e => setDailyDeal(d => ({ ...d, description: e.target.value }))} placeholder="Ej: Doble cheddar + panceta + salsa especial" />
-            </div>
-            <div className="grid-2" style={{ marginBottom: 14 }}>
-              <div>
-                <label className="form-label">Precio original ($)</label>
-                <input type="number" min={0} value={dailyDeal.originalPrice}
-                  onChange={e => {
-                    const orig = Number(e.target.value);
-                    const disc = dailyDeal.discountPrice;
-                    const pct  = orig > 0 && disc < orig ? Math.round((1 - disc / orig) * 100) : 0;
-                    setDailyDeal(d => ({ ...d, originalPrice: orig, discountPercent: pct }));
-                  }} />
-              </div>
-              <div>
-                <label className="form-label">Precio con descuento ($)</label>
-                <input type="number" min={0} value={dailyDeal.discountPrice}
-                  onChange={e => {
-                    const disc = Number(e.target.value);
-                    const orig = dailyDeal.originalPrice;
-                    const pct  = orig > 0 && disc < orig ? Math.round((1 - disc / orig) * 100) : 0;
-                    setDailyDeal(d => ({ ...d, discountPrice: disc, discountPercent: pct }));
-                  }} />
-              </div>
-            </div>
-            {dailyDeal.discountPercent > 0 && (
-              <div style={{ fontSize: '0.82rem', color: '#22c55e', marginBottom: 14, fontWeight: 600 }}>
-                ✅ {dailyDeal.discountPercent}% de descuento — el cliente ahorra {fmt(dailyDeal.originalPrice - dailyDeal.discountPrice)}
-              </div>
-            )}
-            <div className="grid-2" style={{ marginBottom: 14 }}>
-              <div>
-                <label className="form-label">⏰ Válida desde</label>
-                <input type="time" value={dailyDeal.fromHour} onChange={e => setDailyDeal(d => ({ ...d, fromHour: e.target.value }))} />
-              </div>
-              <div>
-                <label className="form-label">⏰ Válida hasta</label>
-                <input type="time" value={dailyDeal.toHour} onChange={e => setDailyDeal(d => ({ ...d, toHour: e.target.value }))} />
+              <div style={{ fontWeight: 700, color: 'var(--white)', marginBottom: 4 }}>Configuración movida al Escandallo</div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--gray)', lineHeight: 1.6 }}>
+                La hamburguesa del día y la hamburguesa del mes se configuran directamente desde el <strong style={{ color: 'var(--gold)' }}>Editor de Recetas (Escandallo)</strong>. Entrá a un producto, editá su receta y vas a encontrar la sección <em>"Destacados en el menú"</em> al final.
               </div>
             </div>
           </div>
-
-          <button className="btn btn-primary" disabled={saving === 'dailyDeal'}
-            onClick={async () => {
-              setSaving('dailyDeal');
-              try { await API.put('/config/dailyDeal', { value: dailyDeal }); toast.success('Promo del día guardada'); }
-              catch { toast.error('Error al guardar'); }
-              finally { setSaving(''); }
-            }}>
-            <Save size={15} /> {saving === 'dailyDeal' ? 'Guardando...' : 'Guardar promo del día'}
-          </button>
-        </Section>
-
-        {/* ── Hamburguesa del mes ──────────────────────────────────────────── */}
-        <Section title="Hamburguesa del mes" icon={Calendar}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, padding: '14px 16px', background: 'var(--dark)', borderRadius: 10, border: `1px solid ${monthlyBurger.enabled ? 'rgba(129,140,248,0.3)' : 'var(--border)'}` }}>
-            <div>
-              <div style={{ fontWeight: 700, color: monthlyBurger.enabled ? '#818cf8' : 'var(--gray)', marginBottom: 2 }}>
-                {monthlyBurger.enabled ? '🟢 Visible como sección especial' : '⚪ Oculta'}
-              </div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--gray)' }}>Aparece como sección destacada al tope del menú</div>
-            </div>
-            <button className={`btn btn-sm ${monthlyBurger.enabled ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setMonthlyBurger(m => ({ ...m, enabled: !m.enabled }))}>
-              {monthlyBurger.enabled ? 'Desactivar' : 'Activar'}
-            </button>
-          </div>
-
-          <div style={{ opacity: monthlyBurger.enabled ? 1 : 0.5, pointerEvents: monthlyBurger.enabled ? 'auto' : 'none' }}>
-            <div className="grid-2" style={{ marginBottom: 14 }}>
-              <div>
-                <label className="form-label">Nombre</label>
-                <input value={monthlyBurger.name} onChange={e => setMonthlyBurger(m => ({ ...m, name: e.target.value }))} placeholder="Ej: La Abril — BBQ Ahumada" />
-              </div>
-              <div>
-                <label className="form-label">Precio ($)</label>
-                <input type="number" min={0} value={monthlyBurger.price} onChange={e => setMonthlyBurger(m => ({ ...m, price: Number(e.target.value) }))} />
-              </div>
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <label className="form-label">Descripción</label>
-              <textarea rows={2} value={monthlyBurger.description}
-                onChange={e => setMonthlyBurger(m => ({ ...m, description: e.target.value }))}
-                placeholder="Ingredientes y características especiales..."
-                style={{ width: '100%', resize: 'vertical' }} />
-            </div>
-            <div className="grid-2" style={{ marginBottom: 14 }}>
-              <div>
-                <label className="form-label">Badge</label>
-                <input value={monthlyBurger.badge} onChange={e => setMonthlyBurger(m => ({ ...m, badge: e.target.value }))} placeholder="🏆 Del mes" />
-              </div>
-              <div>
-                <label className="form-label">Mes (ej: Abril 2026)</label>
-                <input value={monthlyBurger.month} onChange={e => setMonthlyBurger(m => ({ ...m, month: e.target.value }))} placeholder="Abril 2026" />
-              </div>
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <label className="form-label">URL de imagen (opcional)</label>
-              <input value={monthlyBurger.image} onChange={e => setMonthlyBurger(m => ({ ...m, image: e.target.value }))} placeholder="https://res.cloudinary.com/..." />
-            </div>
-          </div>
-
-          <button className="btn btn-primary" disabled={saving === 'monthly'}
-            onClick={async () => {
-              setSaving('monthly');
-              try { await API.put('/config/monthlyBurger', { value: monthlyBurger }); toast.success('Hamburguesa del mes guardada'); }
-              catch { toast.error('Error al guardar'); }
-              finally { setSaving(''); }
-            }}>
-            <Save size={15} /> {saving === 'monthly' ? 'Guardando...' : 'Guardar hamburguesa del mes'}
-          </button>
         </Section>
 
       {/* Mensajes de WhatsApp */}

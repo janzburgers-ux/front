@@ -649,13 +649,31 @@ export default function PublicOrder() {
       const finalFloor   = client.useAltAddress ? (client.altFloor      || client.floor)      : client.floor;
       const finalRefs    = client.useAltAddress ? (client.altReferences || client.references) : client.references;
       const clientPayload = { ...client, address: finalAddr, floor: finalFloor, references: finalRefs };
+
+      // ── Anti-duplicados: generar o reutilizar el key de esta sesión de checkout ──
+      // sessionStorage se limpia al cerrar la tab, así que es seguro reutilizarlo
+      // en reintentos de la misma sesión (corte de internet) pero no entre sesiones.
+      let idempotencyKey = null;
+      try {
+        idempotencyKey = sessionStorage.getItem('janz_idempotency_key');
+        if (!idempotencyKey) {
+          idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          sessionStorage.setItem('janz_idempotency_key', idempotencyKey);
+        }
+      } catch { /* sessionStorage no disponible — continúa sin el key */ }
+
       const res = await API.post('/public/order', {
         client: clientPayload, items: cart.map(i => ({ product: i.product, quantity: i.quantity, additionals: (i.additionals || []).map(a => ({ additional: a.additional, quantity: a.quantity })) })),
         deliveryType, paymentMethod, notes: client.notes, zone: selectedZone,
         scheduledFor: scheduledFor === 'asap' ? null : scheduledFor, isScheduled: scheduledFor !== 'asap',
         deliveryAddress: deliveryType === 'delivery' ? [finalAddr, finalFloor, finalRefs].filter(Boolean).join(' — ') : '',
-        couponCode: couponStatus?.valid ? couponCode.trim() : null
+        couponCode: couponStatus?.valid ? couponCode.trim() : null,
+        idempotencyKey
       });
+
+      // Pedido creado (o recuperado idempotentemente) con éxito → limpiar el key
+      try { sessionStorage.removeItem('janz_idempotency_key'); } catch {}
+
       try { localStorage.setItem('janz_client_data', JSON.stringify({ name: client.name, nickname: client.nickname, whatsapp: client.whatsapp, address: finalAddr, floor: finalFloor, references: finalRefs })); } catch {}
       try { localStorage.setItem('janz_pending_order', res.data.publicCode || res.data.orderNumber); } catch {}
       setPendingOrderCode(res.data.publicCode || res.data.orderNumber);
@@ -674,6 +692,8 @@ export default function PublicOrder() {
       }, 2500);
     } catch (e) {
       setSubmitting(false);
+      // NO limpiar el idempotencyKey en caso de error → si el cliente reintenta,
+      // reutiliza el mismo key y el backend detecta si el pedido ya se creó.
       toast.error(e.response?.data?.message || 'Error al enviar pedido');
     } finally {
       isSubmittingRef.current = false;
@@ -869,7 +889,14 @@ export default function PublicOrder() {
     }
   `;
 
-  const menuGroups = Object.entries(menu).map(([name, variants]) => ({ name, variants, productType: variants[0]?.productType || 'burger' }));
+  const menuGroups = Object.entries(menu).map(([name, variants]) => ({
+    name,
+    // Filtrar variantes que son destacadas del día o del mes — ya aparecen en su card especial
+    variants: variants.filter(v => !v.isDailyBurger && !v.isMonthlyBurger),
+    productType: variants[0]?.productType || 'burger'
+  })).filter(g => g.variants.length > 0);
+  // Lista plana de TODOS los productos (sin filtrar) para las cards de destacados
+  const allMenuProducts = Object.values(menu).flat();
   const hasBurgers = menuGroups.some(g => g.productType === 'burger');
   const hasPapas   = menuGroups.some(g => g.productType === 'papas');
   const hasOtros   = menuGroups.some(g => g.productType !== 'burger' && g.productType !== 'papas');
@@ -1439,13 +1466,13 @@ export default function PublicOrder() {
 
         {dailyDeal && open && (() => {
           // Buscar el producto vinculado en el menú para poder agregarlo al carrito
-          const allProducts = Object.values(menu).flat();
           const linkedProduct = dailyDeal.productId
-            ? allProducts.find(p => p._id === dailyDeal.productId)
+            ? allMenuProducts.find(p => p._id === dailyDeal.productId)
             : null;
-          // Usar el precio de descuento de la promo, no el del menú normal
+          // Precio efectivo: usar discountPrice si hay descuento, si no el original
+          const effectivePrice = dailyDeal.discountPrice > 0 ? dailyDeal.discountPrice : (dailyDeal.originalPrice || linkedProduct?.salePrice || 0);
           const promoProduct = linkedProduct
-            ? { ...linkedProduct, salePrice: dailyDeal.discountPrice || linkedProduct.salePrice }
+            ? { ...linkedProduct, salePrice: effectivePrice }
             : null;
           const inCart = promoProduct ? cart.find(i => i.product === promoProduct._id) : null;
 
@@ -1487,9 +1514,8 @@ export default function PublicOrder() {
         })()}
 
         {monthlyBurger && (() => {
-          const allProducts = Object.values(menu).flat();
           const linkedMonthly = monthlyBurger.productId
-            ? allProducts.find(p => p._id === monthlyBurger.productId)
+            ? allMenuProducts.find(p => p._id === monthlyBurger.productId)
             : null;
           const monthlyInCart = linkedMonthly ? cart.find(i => i.product === linkedMonthly._id) : null;
 

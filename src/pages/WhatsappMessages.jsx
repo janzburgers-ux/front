@@ -1,6 +1,98 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import API from '../utils/api';
 import toast from 'react-hot-toast';
+
+// ── Panel de conexión WhatsApp ────────────────────────────────────────────────
+// Muestra el estado actual y permite iniciar la sesión bajo demanda.
+// El botón solo está activo cuando WA está desconectado.
+// Una vez conectado, se inhabilita automáticamente.
+function WhatsAppConnector() {
+  const [status, setStatus]     = useState(null); // { connected, hasQR, initiated }
+  const [starting, setStarting] = useState(false);
+  const [qrUrl, setQrUrl]       = useState(null);
+  const intervalRef             = useRef(null);
+
+  const fetchStatus = () =>
+    API.get('/whatsapp/status')
+      .then(r => setStatus(r.data))
+      .catch(() => {});
+
+  useEffect(() => {
+    fetchStatus();
+    // Polling cada 5 s para detectar cuando WA se conecta después de escanear el QR
+    intervalRef.current = setInterval(fetchStatus, 5000);
+    return () => clearInterval(intervalRef.current);
+  }, []);
+
+  const handleInitiate = async () => {
+    setStarting(true);
+    try {
+      const r = await API.post('/whatsapp/initiate');
+      setQrUrl(r.data.qrViewUrl || null);
+      toast.success('WhatsApp iniciado. Abrí el link para escanear el QR.');
+    } catch {
+      toast.error('Error al iniciar WhatsApp');
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  if (!status) return null;
+
+  const connected  = status.connected;
+  const initiated  = status.initiated;
+  const borderColor = connected ? 'rgba(34,197,94,0.25)' : initiated ? 'rgba(232,184,75,0.25)' : 'rgba(255,255,255,0.08)';
+  const dotColor    = connected ? '#22c55e'               : initiated ? '#E8B84B'               : '#555';
+  const labelColor  = connected ? '#22c55e'               : initiated ? '#E8B84B'               : 'rgba(255,255,255,0.5)';
+  const label       = connected ? '✅ WhatsApp conectado' : initiated  ? '⏳ Esperando escaneo del QR...' : '⚠️ WhatsApp desconectado';
+  const sublabel    = connected
+    ? 'Los mensajes automáticos están activos.'
+    : initiated
+      ? 'Abrí el link de QR con el celular vinculado a WhatsApp Business.'
+      : 'Apretá el botón para generar el link de conexión.';
+
+  return (
+    <div style={{ marginBottom: 28, padding: '18px 20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${borderColor}`, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Indicador de estado */}
+        <div style={{ width: 10, height: 10, borderRadius: '50%', background: dotColor, flexShrink: 0, boxShadow: connected ? '0 0 6px #22c55e' : 'none' }} />
+        <div>
+          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: labelColor, marginBottom: 2 }}>{label}</div>
+          <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)', lineHeight: 1.5 }}>{sublabel}</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        {/* Link al QR (solo visible cuando fue iniciado y no está conectado aún) */}
+        {qrUrl && !connected && (
+          <a
+            href={qrUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{ fontSize: '0.82rem', color: '#25D366', fontWeight: 700, textDecoration: 'none', padding: '8px 14px', border: '1px solid rgba(37,211,102,0.3)', borderRadius: 9, background: 'rgba(37,211,102,0.07)' }}
+          >
+            📱 Abrir QR
+          </a>
+        )}
+
+        {/* Botón principal: activo solo cuando está desconectado */}
+        <button
+          onClick={handleInitiate}
+          disabled={connected || starting || initiated}
+          style={{
+            padding: '9px 20px', borderRadius: 10, border: 'none', fontWeight: 800,
+            fontSize: '0.85rem', cursor: (connected || starting || initiated) ? 'not-allowed' : 'pointer',
+            background: connected ? 'rgba(34,197,94,0.1)' : initiated ? 'rgba(255,255,255,0.05)' : '#E8B84B',
+            color:      connected ? '#22c55e'               : initiated ? '#555'                  : '#000',
+            transition: 'all 0.2s'
+          }}
+        >
+          {starting ? 'Iniciando...' : connected ? 'Conectado ✓' : initiated ? 'Iniciado...' : '🔗 Generar link QR'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const CATEGORIES = [
   {
@@ -87,6 +179,8 @@ export default function WhatsappMessages() {
         <h1 style={{ fontSize: '1.6rem', fontWeight: 900, color: '#E8B84B', marginBottom: 4 }}>Mensajes de WhatsApp</h1>
         <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.88rem' }}>Todos los mensajes automáticos del sistema. Los editables los personalizás acá; los de código están documentados para referencia.</p>
       </div>
+
+      <WhatsAppConnector />
 
       <div style={{ display: 'grid', gridTemplateColumns: '230px 1fr', gap: 20, alignItems: 'start' }}>
         {/* Sidebar */}
