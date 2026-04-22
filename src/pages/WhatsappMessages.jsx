@@ -4,32 +4,61 @@ import toast from 'react-hot-toast';
 
 // ── Panel de conexión WhatsApp ────────────────────────────────────────────────
 // Muestra el estado actual y permite iniciar la sesión bajo demanda.
-// El botón solo está activo cuando WA está desconectado.
-// Una vez conectado, se inhabilita automáticamente.
+// El QR se muestra INLINE con polling para evitar problemas de auth y URL.
 function WhatsAppConnector() {
   const [status, setStatus]     = useState(null); // { connected, hasQR, initiated }
   const [starting, setStarting] = useState(false);
-  const [qrUrl, setQrUrl]       = useState(null);
-  const intervalRef             = useRef(null);
+  const [qrImage, setQrImage]   = useState(null); // base64 del QR
+  const [showQR, setShowQR]     = useState(false);
+  const statusRef               = useRef(null);
+  const qrRef                   = useRef(null);
 
+  // Polling de status cada 5s
   const fetchStatus = () =>
     API.get('/whatsapp/status')
-      .then(r => setStatus(r.data))
+      .then(r => {
+        setStatus(r.data);
+        // Si se conectó, limpiar el QR
+        if (r.data.connected) {
+          setQrImage(null);
+          setShowQR(false);
+        }
+      })
+      .catch(() => {});
+
+  // Polling del QR cada 10s cuando está iniciado pero no conectado
+  const fetchQR = () =>
+    API.get('/whatsapp/qr')
+      .then(r => {
+        if (r.data.qr) setQrImage(r.data.qr);
+      })
       .catch(() => {});
 
   useEffect(() => {
     fetchStatus();
-    // Polling cada 5 s para detectar cuando WA se conecta después de escanear el QR
-    intervalRef.current = setInterval(fetchStatus, 5000);
-    return () => clearInterval(intervalRef.current);
+    statusRef.current = setInterval(fetchStatus, 5000);
+    return () => clearInterval(statusRef.current);
   }, []);
+
+  // Arrancar polling de QR cuando está iniciado y no conectado
+  useEffect(() => {
+    if (status?.initiated && !status?.connected) {
+      fetchQR();
+      qrRef.current = setInterval(fetchQR, 10000);
+    } else {
+      clearInterval(qrRef.current);
+    }
+    return () => clearInterval(qrRef.current);
+  }, [status?.initiated, status?.connected]);
 
   const handleInitiate = async () => {
     setStarting(true);
     try {
-      const r = await API.post('/whatsapp/initiate');
-      setQrUrl(r.data.qrViewUrl || null);
-      toast.success('WhatsApp iniciado. Abrí el link para escanear el QR.');
+      await API.post('/whatsapp/initiate');
+      setShowQR(true);
+      toast.success('WhatsApp iniciado. Escaneá el QR que aparece abajo.');
+      // Primer fetch del QR luego de 3s para dar tiempo a que se genere
+      setTimeout(fetchQR, 3000);
     } catch {
       toast.error('Error al iniciar WhatsApp');
     } finally {
@@ -39,8 +68,8 @@ function WhatsAppConnector() {
 
   if (!status) return null;
 
-  const connected  = status.connected;
-  const initiated  = status.initiated;
+  const connected   = status.connected;
+  const initiated   = status.initiated;
   const borderColor = connected ? 'rgba(34,197,94,0.25)' : initiated ? 'rgba(232,184,75,0.25)' : 'rgba(255,255,255,0.08)';
   const dotColor    = connected ? '#22c55e'               : initiated ? '#E8B84B'               : '#555';
   const labelColor  = connected ? '#22c55e'               : initiated ? '#E8B84B'               : 'rgba(255,255,255,0.5)';
@@ -48,48 +77,68 @@ function WhatsAppConnector() {
   const sublabel    = connected
     ? 'Los mensajes automáticos están activos.'
     : initiated
-      ? 'Abrí el link de QR con el celular vinculado a WhatsApp Business.'
-      : 'Apretá el botón para generar el link de conexión.';
+      ? 'Escaneá el QR con la app de WhatsApp → Dispositivos vinculados → Vincular dispositivo.'
+      : 'Apretá el botón para generar el QR de conexión.';
 
   return (
-    <div style={{ marginBottom: 28, padding: '18px 20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${borderColor}`, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        {/* Indicador de estado */}
-        <div style={{ width: 10, height: 10, borderRadius: '50%', background: dotColor, flexShrink: 0, boxShadow: connected ? '0 0 6px #22c55e' : 'none' }} />
-        <div>
-          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: labelColor, marginBottom: 2 }}>{label}</div>
-          <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)', lineHeight: 1.5 }}>{sublabel}</div>
+    <div style={{ marginBottom: 28, background: 'rgba(255,255,255,0.02)', border: `1px solid ${borderColor}`, borderRadius: 14, overflow: 'hidden' }}>
+      {/* Fila superior: estado + botón */}
+      <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: dotColor, flexShrink: 0, boxShadow: connected ? '0 0 6px #22c55e' : 'none' }} />
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '0.92rem', color: labelColor, marginBottom: 2 }}>{label}</div>
+            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)', lineHeight: 1.5 }}>{sublabel}</div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          {/* Mostrar/ocultar QR cuando ya fue iniciado */}
+          {initiated && !connected && qrImage && (
+            <button
+              onClick={() => setShowQR(v => !v)}
+              style={{ fontSize: '0.82rem', color: '#25D366', fontWeight: 700, cursor: 'pointer', padding: '8px 14px', border: '1px solid rgba(37,211,102,0.3)', borderRadius: 9, background: 'rgba(37,211,102,0.07)' }}
+            >
+              {showQR ? '🙈 Ocultar QR' : '📱 Ver QR'}
+            </button>
+          )}
+
+          <button
+            onClick={handleInitiate}
+            disabled={connected || starting || initiated}
+            style={{
+              padding: '9px 20px', borderRadius: 10, border: 'none', fontWeight: 800,
+              fontSize: '0.85rem', cursor: (connected || starting || initiated) ? 'not-allowed' : 'pointer',
+              background: connected ? 'rgba(34,197,94,0.1)' : initiated ? 'rgba(255,255,255,0.05)' : '#E8B84B',
+              color:      connected ? '#22c55e'               : initiated ? '#555'                  : '#000',
+              transition: 'all 0.2s'
+            }}
+          >
+            {starting ? 'Iniciando...' : connected ? 'Conectado ✓' : initiated ? 'Iniciado...' : '🔗 Generar QR'}
+          </button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-        {/* Link al QR (solo visible cuando fue iniciado y no está conectado aún) */}
-        {qrUrl && !connected && (
-          <a
-            href={qrUrl}
-            target="_blank"
-            rel="noreferrer"
-            style={{ fontSize: '0.82rem', color: '#25D366', fontWeight: 700, textDecoration: 'none', padding: '8px 14px', border: '1px solid rgba(37,211,102,0.3)', borderRadius: 9, background: 'rgba(37,211,102,0.07)' }}
-          >
-            📱 Abrir QR
-          </a>
-        )}
-
-        {/* Botón principal: activo solo cuando está desconectado */}
-        <button
-          onClick={handleInitiate}
-          disabled={connected || starting || initiated}
-          style={{
-            padding: '9px 20px', borderRadius: 10, border: 'none', fontWeight: 800,
-            fontSize: '0.85rem', cursor: (connected || starting || initiated) ? 'not-allowed' : 'pointer',
-            background: connected ? 'rgba(34,197,94,0.1)' : initiated ? 'rgba(255,255,255,0.05)' : '#E8B84B',
-            color:      connected ? '#22c55e'               : initiated ? '#555'                  : '#000',
-            transition: 'all 0.2s'
-          }}
-        >
-          {starting ? 'Iniciando...' : connected ? 'Conectado ✓' : initiated ? 'Iniciado...' : '🔗 Generar link QR'}
-        </button>
-      </div>
+      {/* QR inline — visible cuando está iniciado, no conectado, y showQR=true */}
+      {initiated && !connected && showQR && (
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+          {qrImage ? (
+            <>
+              <div style={{ background: 'white', padding: 16, borderRadius: 16, display: 'inline-block' }}>
+                <img src={qrImage} alt="WhatsApp QR" style={{ width: 260, height: 260, display: 'block' }} />
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', textAlign: 'center', margin: 0 }}>
+                El QR se actualiza automáticamente cada 10 s. Si venció, esperá un momento.
+              </p>
+            </>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '20px 0' }}>
+              <div className="spinner" style={{ margin: '0 auto' }} />
+              <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.35)', margin: 0 }}>Generando QR, aguardá unos segundos...</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
