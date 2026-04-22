@@ -36,6 +36,7 @@ import WhatsappMessages from './pages/WhatsappMessages';
 import PushNotifications from './pages/PushNotifications';
 import PublicReview from './pages/PublicReview';
 import Reviews from './pages/Reviews';
+import Broadcast from './pages/Broadcast';
 
 // ✅ SOLO esto
 import { trackPageView } from "./utils/analytics";
@@ -100,6 +101,7 @@ function AppRoutes() {
         <Route path="whatsapp" element={<ProtectedRoute adminOnly><WhatsappMessages /></ProtectedRoute>} />
         <Route path="push" element={<ProtectedRoute adminOnly><PushNotifications /></ProtectedRoute>} />
         <Route path="resenas" element={<ProtectedRoute adminOnly><Reviews /></ProtectedRoute>} />
+        <Route path="difusion" element={<ProtectedRoute adminOnly><Broadcast /></ProtectedRoute>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/pedido" replace />} />

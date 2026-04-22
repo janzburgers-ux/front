@@ -4,8 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, ShoppingBag, ChefHat, Package, Beef, Users,
   ShoppingCart, LogOut, BookOpen, UserCog, Menu, X, Ticket,
-  Settings, AlertTriangle, Wallet, BarChart2, Bell, Star, Utensils, PiggyBank, Brain, Smartphone, XCircle, Receipt, FlaskConical, Trophy, Phone, MessageSquare, Send, DollarSign, MessageCircle
-} from 'lucide-react';
+  Settings, AlertTriangle, Wallet, BarChart2, Bell, Star, Utensils, PiggyBank, Brain, Smartphone, XCircle, Receipt, FlaskConical, Trophy, Phone, MessageSquare, Send, DollarSign, MessageCircle, Radio} from 'lucide-react';
 import API from '../utils/api';
 
 const navGroups = [
@@ -62,6 +61,7 @@ const navGroups = [
       { to: '/gestion/configuracion', label: 'Configuración',    icon: Settings },
       { to: '/gestion/whatsapp',      label: 'Mensajes WA',      icon: MessageSquare },
       { to: '/gestion/push',          label: 'Notif. Push',      icon: Send },
+      { to: '/gestion/difusion',      label: 'Difusión WA',       icon: Radio },
       { to: '/gestion/resenas',       label: 'Reseñas',           icon: MessageCircle },
     ]
   },
