@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, ChevronLeft, ChevronRight, Clock, Trophy, DollarSign, FileDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import API from '../utils/api';
-import logoJanz from '../assets/logo-janz.png';
+import logoJanz from '../assets/LogoNegro.png';
 
 const fmt = n => `$${Number(n || 0).toLocaleString('es-AR')}`;
 const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
