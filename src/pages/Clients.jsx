@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Star, FlaskConical, MapPin, Phone, MessageCircle, TrendingUp, ShoppingBag, Clock, BarChart2 } from 'lucide-react';
+import { Search, Plus, Star, FlaskConical, MapPin, Phone, MessageCircle, TrendingUp, ShoppingBag, Clock, BarChart2, Pencil } from 'lucide-react';
 import API from '../utils/api';
 import toast from 'react-hot-toast';
 
 const fmt  = n => `$${Number(n || 0).toLocaleString('es-AR')}`;
 const STATUS_LABELS = { pending: 'Pendiente', confirmed: 'Confirmado', preparing: 'En cocina', ready: 'Listo', delivered: 'Entregado', cancelled: 'Cancelado' };
 const STATUS_COLORS = { delivered: '#22c55e', cancelled: '#ef4444', pending: '#f59e0b', confirmed: '#3b82f6', preparing: '#a855f7' };
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 function calcClientStats(orders) {
   const delivered = orders.filter(o => o.status === 'delivered');
@@ -50,6 +51,11 @@ export default function Clients() {
   const [togglingTest, setTogglingTest] = useState(false);
   const [form, setForm] = useState({ name:'', phone:'', whatsapp:'', email:'', address:'', notes:'' });
 
+  // ── Edit client state ──────────────────────────────────────────────────────
+  const [editingClient, setEditingClient] = useState(false);
+  const [editForm, setEditForm] = useState({ nickname:'', name:'', birthDay:'', birthMonth:'' });
+  const [savingEdit, setSavingEdit] = useState(false);
+
   const fetchClients = (q = '') => {
     API.get('/clients', { params: q ? { search: q } : {} }).then(r => setClients(r.data)).finally(() => setLoading(false));
   };
@@ -72,10 +78,40 @@ export default function Clients() {
   };
 
   const viewClient = async (client) => {
-    setSelected(client); setClientDetail(null); setDetailStats(null);
+    setSelected(client); setClientDetail(null); setDetailStats(null); setEditingClient(false);
     const res = await API.get(`/clients/${client._id}`);
     setClientDetail(res.data);
     setDetailStats(calcClientStats(res.data.orders || []));
+  };
+
+  const openEditClient = () => {
+    setEditForm({
+      nickname:   selected.nickname  || '',
+      name:       selected.name      || '',
+      birthDay:   selected.birthDay  || '',
+      birthMonth: selected.birthMonth || '',
+    });
+    setEditingClient(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editForm.name.trim()) { toast.error('El nombre no puede estar vacío'); return; }
+    setSavingEdit(true);
+    try {
+      const payload = {
+        name:       editForm.name.trim(),
+        nickname:   editForm.nickname.trim() || null,
+        birthDay:   editForm.birthDay   ? Number(editForm.birthDay)   : null,
+        birthMonth: editForm.birthMonth ? Number(editForm.birthMonth) : null,
+      };
+      const res = await API.put(`/clients/${selected._id}`, payload);
+      const updated = { ...selected, ...res.data };
+      setSelected(updated);
+      setClients(prev => prev.map(c => c._id === updated._id ? updated : c));
+      setEditingClient(false);
+      toast.success('✅ Datos actualizados');
+    } catch { toast.error('Error al guardar'); }
+    finally { setSavingEdit(false); }
   };
 
   const toggleTestClient = async (client) => {
@@ -133,6 +169,7 @@ export default function Clients() {
                             <div style={{ fontWeight:700, display:'flex', alignItems:'center', gap:6 }}>
                               {c.name}{c.isTestClient && <TestBadge />}
                             </div>
+                            {c.nickname && <div style={{ fontSize:'0.72rem', color:'var(--gray)' }}>"{c.nickname}"</div>}
                             {c.email && <div style={{ fontSize:'0.72rem', color:'var(--gray)' }}>{c.email}</div>}
                           </div>
                         </div>
@@ -170,7 +207,7 @@ export default function Clients() {
         )}
       </div>
 
-      {/* Modal perfil completo */}
+      {/* ── Modal perfil completo ──────────────────────────────────────────── */}
       {selected && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setSelected(null)}>
           <div className="modal" style={{ maxWidth:720 }}>
@@ -185,11 +222,27 @@ export default function Clients() {
                     </span>
                   )}
                 </div>
+                {selected.nickname && (
+                  <div style={{ fontSize:'0.78rem', color:'var(--gold)', marginTop:2 }}>
+                    "{selected.nickname}"
+                  </div>
+                )}
                 <div style={{ fontSize:'0.75rem', color:'var(--gray)', marginTop:4 }}>
                   Cliente desde {selected.createdAt ? new Date(selected.createdAt).toLocaleDateString('es-AR') : '—'}
+                  {selected.birthDay && selected.birthMonth && (
+                    <span style={{ marginLeft:10 }}>🎂 {selected.birthDay} de {MONTHS[selected.birthMonth - 1]}</span>
+                  )}
                 </div>
               </div>
               <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                {/* Botón Editar */}
+                <button
+                  onClick={openEditClient}
+                  style={{ display:'flex', alignItems:'center', gap:6, fontSize:'0.75rem', fontWeight:700,
+                    background:'rgba(232,184,75,0.1)', color:'var(--gold)',
+                    border:'1px solid rgba(232,184,75,0.3)', borderRadius:8, padding:'6px 12px', cursor:'pointer' }}>
+                  <Pencil size={13}/> Editar
+                </button>
                 <button onClick={() => toggleTestClient(selected)} disabled={togglingTest}
                   title={selected.isTestClient ? 'Marcar como cliente real' : 'Marcar como cliente de prueba'}
                   style={{ display:'flex', alignItems:'center', gap:6, fontSize:'0.75rem', fontWeight:700,
@@ -201,6 +254,92 @@ export default function Clients() {
                 <button className="btn-icon" onClick={() => setSelected(null)}>✕</button>
               </div>
             </div>
+
+            {/* ── Drawer de edición ──────────────────────────────────────── */}
+            {editingClient && (
+              <div style={{ margin:'0 0 16px', padding:'16px 20px', background:'rgba(232,184,75,0.05)', border:'1px solid rgba(232,184,75,0.2)', borderRadius:10 }}>
+                <div style={{ fontWeight:700, fontSize:'0.82rem', color:'var(--gold)', marginBottom:14, display:'flex', alignItems:'center', gap:6 }}>
+                  <Pencil size={13}/> Editar datos del cliente
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+                  <div>
+                    <label style={{ fontSize:'0.72rem', color:'var(--gray)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em', display:'block', marginBottom:5 }}>
+                      Nombre completo *
+                    </label>
+                    <input
+                      value={editForm.name}
+                      onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder="Nombre completo"
+                      style={{ width:'100%', boxSizing:'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:'0.72rem', color:'var(--gray)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em', display:'block', marginBottom:5 }}>
+                      Apodo / Como lo llamamos
+                    </label>
+                    <input
+                      value={editForm.nickname}
+                      onChange={e => setEditForm(f => ({ ...f, nickname: e.target.value }))}
+                      placeholder="Ej: Gianfra, Sol, Nacho..."
+                      style={{ width:'100%', boxSizing:'border-box' }}
+                    />
+                    {editForm.nickname.trim() && (
+                      <div style={{ fontSize:'0.7rem', color:'var(--gold)', marginTop:4 }}>
+                        Se va a saludar como: <strong>"{editForm.nickname.trim()}"</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize:'0.72rem', color:'var(--gray)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.05em', display:'block', marginBottom:5 }}>
+                    🎂 Cumpleaños <span style={{ color:'var(--gray)', fontWeight:400, textTransform:'none' }}>(opcional)</span>
+                  </label>
+                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                    <input
+                      type="number" min={1} max={31}
+                      value={editForm.birthDay}
+                      onChange={e => setEditForm(f => ({ ...f, birthDay: e.target.value }))}
+                      placeholder="Día"
+                      style={{ width:80, textAlign:'center' }}
+                    />
+                    <select
+                      value={editForm.birthMonth}
+                      onChange={e => setEditForm(f => ({ ...f, birthMonth: e.target.value }))}
+                      style={{ flex:1 }}
+                    >
+                      <option value="">Mes</option>
+                      {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                    </select>
+                    {(editForm.birthDay || editForm.birthMonth) && (
+                      <button
+                        onClick={() => setEditForm(f => ({ ...f, birthDay:'', birthMonth:'' }))}
+                        style={{ background:'none', border:'1px solid var(--border)', color:'var(--gray)', borderRadius:6, padding:'6px 10px', fontSize:'0.75rem', cursor:'pointer', flexShrink:0 }}>
+                        Borrar
+                      </button>
+                    )}
+                  </div>
+                  {editForm.birthDay && editForm.birthMonth && (
+                    <div style={{ fontSize:'0.72rem', color:'var(--gold)', marginTop:5 }}>
+                      🎉 Recibirá un cupón de cumpleaños el {editForm.birthDay} de {MONTHS[Number(editForm.birthMonth) - 1]}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display:'flex', gap:8, marginTop:16 }}>
+                  <button
+                    onClick={() => setEditingClient(false)}
+                    style={{ flex:1, background:'rgba(255,255,255,0.04)', color:'var(--gray)', border:'1px solid var(--border)', padding:'10px', borderRadius:8, fontWeight:600, cursor:'pointer', fontSize:'0.85rem' }}>
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={savingEdit || !editForm.name.trim()}
+                    style={{ flex:2, background:'var(--gold)', color:'#000', border:'none', padding:'10px', borderRadius:8, fontWeight:800, cursor:'pointer', fontSize:'0.85rem', opacity: savingEdit ? 0.7 : 1 }}>
+                    {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="modal-body" style={{ maxHeight:'75vh', overflowY:'auto' }}>
 
               {/* Contacto */}
