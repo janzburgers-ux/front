@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, ChevronLeft, ChevronRight, Clock, Trophy, DollarSign, FileDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import API from '../utils/api';
+import logoJanz from '../assets/logo-janz.png';
 
 const fmt = n => `$${Number(n || 0).toLocaleString('es-AR')}`;
 const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -69,6 +70,20 @@ export default function Dashboard() {
   const exportPDF = async () => {
     setExporting(true);
     try {
+      // Convertir logo a base64 para incrustarlo en el HTML generado.
+      // fetch() sobre la URL del asset funciona tanto en dev como en producción
+      // (Vite/CRA resuelven logoJanz a la URL final con hash de contenido).
+      // El base64 garantiza que el logo aparece al imprimir o guardar como PDF
+      // sin depender de ninguna URL externa ni ruta relativa.
+      const logoBase64 = await fetch(logoJanz)
+        .then(r => r.blob())
+        .then(blob => new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        }));
+
       const res = await API.get(`/dashboard/report?month=${month}&year=${year}`);
       const d = res.data;
       const fmt  = n => `$${Number(n||0).toLocaleString('es-AR')}`;
@@ -172,7 +187,7 @@ export default function Dashboard() {
 
       <!-- Portada -->
       <div class="cover">
-        <div style="font-size:2.4rem">🍔</div>
+        <img src="${logoBase64}" alt="Janz Burgers" style="height:72px;width:auto;object-fit:contain;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto" />
         <h1>Reporte Mensual — ${monthName} ${year}</h1>
         <div class="sub">Janz Burgers · Generado el ${new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})}</div>
       </div>
@@ -380,7 +395,7 @@ export default function Dashboard() {
     } finally {
       setExporting(false);
     }
-  };;;
+  };
 
   if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" style={{ margin: '0 auto' }}/></div>;
 
@@ -532,7 +547,6 @@ export default function Dashboard() {
                 <div style={{ fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
                   💰 Distribución de ganancias
                 </div>
-                {/* Desglose ganancia neta */}
                 {sales.netProfit !== undefined && (
                   <div style={{ background: 'var(--dark)', borderRadius: 8, padding: '10px 12px', marginBottom: 14, fontSize: '0.78rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
