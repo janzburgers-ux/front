@@ -147,6 +147,28 @@ export default function Reviews() {
                 ))}
               </div>
             )}
+
+            {/* NPS — potenciales referidos */}
+            {s.nps && s.nps.total > 0 && (
+              <div className="stat-card" style={{ gridColumn: 'span 2' }}>
+                <div className="stat-label" style={{ marginBottom: 10 }}>¿Recomendarían Janz? <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>({s.nps.total} respuestas)</span></div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                  <span style={{ fontSize: '2rem', fontWeight: 900, color: s.nps.avg >= 4 ? '#22c55e' : s.nps.avg >= 3 ? GOLD : '#ef4444' }}>{s.nps.avg}</span>
+                  <div>
+                    <div style={{ fontSize: '0.78rem', color: s.nps.avg >= 4 ? '#22c55e' : s.nps.avg >= 3 ? GOLD : '#ef4444', fontWeight: 700 }}>
+                      {s.nps.avg >= 4 ? 'Alta probabilidad de recomendar' : s.nps.avg >= 3 ? 'Probabilidad media' : 'Baja probabilidad'}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>
+                      🌟 {s.nps.promoters} potencial{s.nps.promoters !== 1 ? 'es' : ''} referido{s.nps.promoters !== 1 ? 's' : ''} (score 4-5)
+                    </div>
+                  </div>
+                </div>
+                {[5,4,3,2,1].map(n => (
+                  <StatBar key={n} label={`${n}`} value={s.nps.distribution[n] || 0} total={s.nps.total}
+                    color={n >= 4 ? '#22c55e' : n === 3 ? GOLD : '#ef4444'} />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -211,6 +233,33 @@ export default function Reviews() {
                         {r.burgerRating && <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.05)', padding: '3px 10px', borderRadius: 99, color: 'rgba(255,255,255,0.5)' }}>{burgerLabels[r.burgerRating] || r.burgerRating}</span>}
                         {r.tempRating   && <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.05)', padding: '3px 10px', borderRadius: 99, color: 'rgba(255,255,255,0.5)' }}>{tempLabels[r.tempRating] || r.tempRating}</span>}
                         {r.onTime != null && <span style={{ fontSize: '0.75rem', background: r.onTime ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', padding: '3px 10px', borderRadius: 99, color: r.onTime ? '#22c55e' : '#ef4444' }}>{r.onTime ? '✅ A tiempo' : '❌ Llegó tarde'}</span>}
+                      </div>
+                    )}
+
+                    {/* NPS — ¿recomendaría Janz? */}
+                    {r.completed && r.npsScore != null && (
+                      <div style={{ marginTop: 8, marginBottom: r.comment ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>¿Recomendaría?</span>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          {[1,2,3,4,5].map(n => (
+                            <span key={n} style={{
+                              width: 22, height: 22, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '0.72rem', fontWeight: 700,
+                              background: n === r.npsScore
+                                ? (r.npsScore >= 4 ? 'rgba(34,197,94,0.2)' : r.npsScore === 3 ? 'rgba(232,184,75,0.2)' : 'rgba(239,68,68,0.2)')
+                                : 'rgba(255,255,255,0.04)',
+                              color: n === r.npsScore
+                                ? (r.npsScore >= 4 ? '#22c55e' : r.npsScore === 3 ? GOLD : '#ef4444')
+                                : 'rgba(255,255,255,0.15)'
+                            }}>{n}</span>
+                          ))}
+                        </div>
+                        {/* Badge de potencial referido */}
+                        {r.npsScore >= 4 && (
+                          <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: 100, textTransform: 'uppercase', letterSpacing: '0.06em', background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}>
+                            🌟 Potencial referido
+                          </span>
+                        )}
                       </div>
                     )}
 
