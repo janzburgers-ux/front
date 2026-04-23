@@ -187,7 +187,7 @@ export default function Dashboard() {
 
       <!-- Portada -->
       <div class="cover">
-        <img src="${logoBase64}" alt="Janz Burgers" style="height:72px;width:auto;object-fit:contain;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto" />
+        <img src="${logoBase64}" alt="Janz Burgers" style="height:110px;width:auto;object-fit:contain;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto" />
         <h1>Reporte Mensual — ${monthName} ${year}</h1>
         <div class="sub">Janz Burgers · Generado el ${new Date().toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'})}</div>
       </div>
