@@ -336,6 +336,31 @@ export default function PublicOrder() {
     return () => observer.disconnect();
   }, [step, menu]);
 
+  // ── useEffect 4b: refrescar datos stale de localStorage (nickname vacío) ──
+  // Pasa cuando el cliente ya estaba en localStorage (sin nickname) pero ahora
+  // ya tiene uno en la BD. Se actualiza silenciosamente sin mostrar nada raro.
+  useEffect(() => {
+    if (authStep !== 'returning' || !client.whatsapp || client.nickname) return;
+    API.get(`/public/client?wa=${client.whatsapp.replace(/\D/g, '')}`).then(r => {
+      if (!r.data.found) return;
+      if (r.data.hasNickname) {
+        // Tiene nickname en DB → actualizar estado y localStorage
+        setClient(c => ({ ...c, nickname: r.data.nickname, name: r.data.name || c.name }));
+        try {
+          const saved = JSON.parse(localStorage.getItem('janz_client_data') || '{}');
+          localStorage.setItem('janz_client_data', JSON.stringify({
+            ...saved, nickname: r.data.nickname, name: r.data.name || saved.name
+          }));
+        } catch {}
+      } else {
+        // Todavía no tiene nickname en DB → llevar al form de actualización
+        setUpdateForm({ nickname: r.data.name?.split(' ')[0] || '', birthDay: '', birthMonth: '', birthSkipped: false });
+        setAuthStep('update');
+      }
+    }).catch(() => {});
+  // eslint-disable-next-line
+  }, [authStep, client.whatsapp, client.nickname]);
+
   // ── useEffect 5: costo de delivery ───────────────────────────────────────
   useEffect(() => {
     if (!selectedZone || deliveryType !== 'delivery') { setDeliveryCost(0); return; }
