@@ -27,7 +27,8 @@ export default function Prode() {
   const [stats, setStats] = useState(null);
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
+  const [debugResult, setDebugResult] = useState(null);
+  const [debugging, setDebugging] = useState(false);
   const [editConfig, setEditConfig] = useState(false);
   const [cfgForm, setCfgForm] = useState({});
   const [bonificaciones, setBonificaciones] = useState([]);
@@ -58,6 +59,17 @@ export default function Prode() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleDebugApi = async () => {
+    setDebugging(true);
+    setDebugResult(null);
+    try {
+      const r = await API.get('/prode/fixture/debug-api');
+      setDebugResult(r.data);
+    } catch (e) {
+      setDebugResult({ ok: false, problema: e.response?.data?.message || e.message });
+    } finally { setDebugging(false); }
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -145,6 +157,9 @@ export default function Prode() {
           <Trophy size={22} color="var(--gold)" /> Prode Mundial 2026
         </h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" onClick={handleDebugApi} disabled={debugging} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            {debugging ? '...' : '🔍 Debug API'}
+          </button>
           <button className="btn btn-secondary" onClick={() => setEditConfig(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Settings size={15} /> Configurar
           </button>
@@ -174,6 +189,67 @@ export default function Prode() {
                 <div style={{ fontSize: 22, fontWeight: 600, color: 'var(--text)' }}>{value}</div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Panel debug API */}
+        {debugResult && (
+          <div style={{
+            background: debugResult.ok ? 'rgba(52,211,153,0.06)' : 'rgba(239,68,68,0.06)',
+            border: `1px solid ${debugResult.ok ? '#34d399' : '#ef4444'}`,
+            borderRadius: 10, padding: '14px 16px', marginBottom: 20, fontSize: 13,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <span style={{ fontWeight: 600, color: debugResult.ok ? '#34d399' : '#ef4444' }}>
+                {debugResult.ok ? '✅ API responde' : '❌ Problema detectado'}
+              </span>
+              <button onClick={() => setDebugResult(null)} style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: 16 }}>✕</button>
+            </div>
+            {debugResult.problema && (
+              <div style={{ marginBottom: 8 }}>
+                <span style={{ color: '#ef4444', fontWeight: 500 }}>Problema: </span>
+                <span style={{ color: 'var(--text)' }}>{debugResult.problema}</span>
+              </div>
+            )}
+            {debugResult.cfg && (
+              <div style={{ marginBottom: 8, color: 'var(--gray)' }}>
+                URL: <code style={{ color: 'var(--text)', fontSize: 12 }}>tournament/{debugResult.cfg.tournamentId}/season/{debugResult.cfg.seasonId}/matches</code>
+              </div>
+            )}
+            {debugResult.respuesta && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div>
+                  <span style={{ color: 'var(--gray)' }}>Campo detectado: </span>
+                  <code style={{ color: '#E8B84B' }}>{debugResult.respuesta.campo_detectado}</code>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--gray)' }}>Partidos encontrados: </span>
+                  <span style={{ color: 'var(--text)', fontWeight: 600 }}>{debugResult.respuesta.cantidad_partidos}</span>
+                </div>
+                {debugResult.respuesta.claves_raiz?.length > 0 && (
+                  <div>
+                    <span style={{ color: 'var(--gray)' }}>Claves raíz de la respuesta: </span>
+                    <code style={{ color: '#a78bfa', fontSize: 12 }}>{debugResult.respuesta.claves_raiz.join(', ')}</code>
+                  </div>
+                )}
+                {debugResult.respuesta.primer_partido_raw && (
+                  <details style={{ marginTop: 6 }}>
+                    <summary style={{ cursor: 'pointer', color: 'var(--gray)', fontSize: 12 }}>Ver primer partido (raw)</summary>
+                    <pre style={{ fontSize: 11, color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, padding: 10, marginTop: 8, overflowX: 'auto', maxHeight: 300 }}>
+                      {JSON.stringify(debugResult.respuesta.primer_partido_raw, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            )}
+            {debugResult.apiResponse && (
+              <details style={{ marginTop: 6 }}>
+                <summary style={{ cursor: 'pointer', color: 'var(--gray)', fontSize: 12 }}>Ver respuesta de error de la API</summary>
+                <pre style={{ fontSize: 11, color: '#ef4444', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, padding: 10, marginTop: 8, overflowX: 'auto' }}>
+                  {JSON.stringify(debugResult.apiResponse, null, 2)}
+                </pre>
+              </details>
+            )}
           </div>
         )}
 
