@@ -29,6 +29,7 @@ export default function Prode() {
   const [loading, setLoading] = useState(true);
   const [debugResult, setDebugResult] = useState(null);
   const [debugging, setDebugging] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [editConfig, setEditConfig] = useState(false);
   const [cfgForm, setCfgForm] = useState({});
   const [bonificaciones, setBonificaciones] = useState([]);
@@ -59,9 +60,6 @@ export default function Prode() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  const [debugResult, setDebugResult] = useState(null);
-  const [debugging, setDebugging] = useState(false);
 
   const handleDebugApi = async () => {
     setDebugging(true);
