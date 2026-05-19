@@ -60,6 +60,9 @@ export default function Prode() {
 
   useEffect(() => { load(); }, [load]);
 
+  const [debugResult, setDebugResult] = useState(null);
+  const [debugging, setDebugging] = useState(false);
+
   const handleDebugApi = async () => {
     setDebugging(true);
     setDebugResult(null);
@@ -192,7 +195,7 @@ export default function Prode() {
           </div>
         )}
 
-        {/* Panel debug API */}
+        {/* Panel debug API — API-Football v3 */}
         {debugResult && (
           <div style={{
             background: debugResult.ok ? 'rgba(52,211,153,0.06)' : 'rgba(239,68,68,0.06)',
@@ -201,7 +204,7 @@ export default function Prode() {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <span style={{ fontWeight: 600, color: debugResult.ok ? '#34d399' : '#ef4444' }}>
-                {debugResult.ok ? '✅ API responde' : '❌ Problema detectado'}
+                {debugResult.ok ? '✅ API-Football responde' : '❌ Problema detectado'}
               </span>
               <button onClick={() => setDebugResult(null)} style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer', fontSize: 16 }}>✕</button>
             </div>
@@ -211,32 +214,22 @@ export default function Prode() {
                 <span style={{ color: 'var(--text)' }}>{debugResult.problema}</span>
               </div>
             )}
-            {debugResult.cfg && (
-              <div style={{ marginBottom: 8, color: 'var(--gray)' }}>
-                URL: <code style={{ color: 'var(--text)', fontSize: 12 }}>tournament/{debugResult.cfg.tournamentId}/season/{debugResult.cfg.seasonId}/matches</code>
+            {debugResult.url && (
+              <div style={{ marginBottom: 8, color: 'var(--gray)', fontSize: 12 }}>
+                URL: <code style={{ color: 'var(--text)' }}>{debugResult.url}</code>
               </div>
             )}
-            {debugResult.respuesta && (
+            {debugResult.ok && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div>
-                  <span style={{ color: 'var(--gray)' }}>Campo detectado: </span>
-                  <code style={{ color: '#E8B84B' }}>{debugResult.respuesta.campo_detectado}</code>
-                </div>
-                <div>
                   <span style={{ color: 'var(--gray)' }}>Partidos encontrados: </span>
-                  <span style={{ color: 'var(--text)', fontWeight: 600 }}>{debugResult.respuesta.cantidad_partidos}</span>
+                  <span style={{ fontWeight: 600, color: '#34d399' }}>{debugResult.cantidad}</span>
                 </div>
-                {debugResult.respuesta.claves_raiz?.length > 0 && (
-                  <div>
-                    <span style={{ color: 'var(--gray)' }}>Claves raíz de la respuesta: </span>
-                    <code style={{ color: '#a78bfa', fontSize: 12 }}>{debugResult.respuesta.claves_raiz.join(', ')}</code>
-                  </div>
-                )}
-                {debugResult.respuesta.primer_partido_raw && (
-                  <details style={{ marginTop: 6 }}>
+                {debugResult.primer_partido && (
+                  <details style={{ marginTop: 4 }}>
                     <summary style={{ cursor: 'pointer', color: 'var(--gray)', fontSize: 12 }}>Ver primer partido (raw)</summary>
                     <pre style={{ fontSize: 11, color: 'var(--text)', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, padding: 10, marginTop: 8, overflowX: 'auto', maxHeight: 300 }}>
-                      {JSON.stringify(debugResult.respuesta.primer_partido_raw, null, 2)}
+                      {JSON.stringify(debugResult.primer_partido, null, 2)}
                     </pre>
                   </details>
                 )}
@@ -244,7 +237,7 @@ export default function Prode() {
             )}
             {debugResult.apiResponse && (
               <details style={{ marginTop: 6 }}>
-                <summary style={{ cursor: 'pointer', color: 'var(--gray)', fontSize: 12 }}>Ver respuesta de error de la API</summary>
+                <summary style={{ cursor: 'pointer', color: 'var(--gray)', fontSize: 12 }}>Ver respuesta de error</summary>
                 <pre style={{ fontSize: 11, color: '#ef4444', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6, padding: 10, marginTop: 8, overflowX: 'auto' }}>
                   {JSON.stringify(debugResult.apiResponse, null, 2)}
                 </pre>
