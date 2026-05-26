@@ -90,6 +90,14 @@ export default function Prode() {
     } catch { toast.error('Error cargando fixture de prueba'); }
   };
 
+  const handleDeleteMock = async () => {
+    try {
+      const r = await API.delete('/prode/fixture/mock');
+      toast.success(`${r.data.deleted} partidos de prueba eliminados`);
+      load();
+    } catch { toast.error('Error eliminando partidos de prueba'); }
+  };
+
   const handleSaveConfig = async () => {
     try {
       await API.put('/prode/config', cfgForm);
@@ -347,16 +355,29 @@ export default function Prode() {
                 </div>
               </div>
             ) : (
-              Object.entries(fixtureAgrupado).map(([grupo, matches]) => (
-                <div key={grupo} style={{ marginBottom: 24 }}>
-                  <h3 style={{ fontSize: 13, color: 'var(--gray)', fontWeight: 600, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>{grupo}</h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {matches.map(m => (
-                      <MatchRow key={m._id} match={m} onSetResultado={handleSetResultado} statusBadge={statusBadge} />
-                    ))}
+              <>
+                {fixture.some(m => m.apiId?.startsWith('mock-')) && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={handleDeleteMock}
+                      style={{ fontSize: 12, color: '#ef4444', borderColor: '#ef444433' }}
+                    >
+                      🗑 Eliminar partidos de prueba ({fixture.filter(m => m.apiId?.startsWith('mock-')).length})
+                    </button>
                   </div>
-                </div>
-              ))
+                )}
+                {Object.entries(fixtureAgrupado).map(([grupo, matches]) => (
+                  <div key={grupo} style={{ marginBottom: 24 }}>
+                    <h3 style={{ fontSize: 13, color: 'var(--gray)', fontWeight: 600, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>{grupo}</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {matches.map(m => (
+                        <MatchRow key={m._id} match={m} onSetResultado={handleSetResultado} statusBadge={statusBadge} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </>
             )}
           </div>
         )}
