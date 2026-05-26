@@ -75,8 +75,8 @@ export default function Prode() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const r = await API.post('/prode/fixture/sync');
-      toast.success(`${r.data.synced} partidos sincronizados`);
+      const r = await API.post('/prode/fixture/sync', {}, { timeout: 30000 });
+      toast.success(`${r.data.synced} partidos sincronizados (${r.data.insertados} nuevos, ${r.data.actualizados} actualizados)`);
       load();
     } catch { toast.error('Error sincronizando fixture'); }
     finally { setSyncing(false); }
