@@ -37,6 +37,18 @@ export default function Prode() {
   const [showAddBon, setShowAddBon] = useState(false);
   const [bonForm, setBonForm] = useState({ tipo: 'gasto_minimo', descripcion: '', montoMinimo: '', puntos: 1, productoId: '', productoNombre: '' });
 
+  // ── Test states ─────────────────────────────────────────────────────────────
+  const [testEstado,       setTestEstado      ] = useState(null);
+  const [testLoadingEstado,setTestLoadingEstado] = useState(false);
+  const [simPartido,       setSimPartido      ] = useState({ matchId: '', homeScore: '', awayScore: '' });
+  const [simResult,        setSimResult       ] = useState(null);
+  const [simLoading,       setSimLoading      ] = useState(false);
+  const [simCompra,        setSimCompra       ] = useState({ clientId: '', total: '5000' });
+  const [simCompraResult,  setSimCompraResult ] = useState(null);
+  const [simCompraLoading, setSimCompraLoading] = useState(false);
+  const [cleanResult,      setCleanResult     ] = useState(null);
+  const [cleanLoading,     setCleanLoading    ] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -283,6 +295,7 @@ export default function Prode() {
             { id: 'ranking', label: 'Ranking' },
             { id: 'fixture', label: 'Fixture' },
             { id: 'bonificaciones', label: '🎁 Bonificaciones' },
+            { id: 'testing', label: '🧪 Testing' },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               background: 'none', border: 'none', cursor: 'pointer',
@@ -448,6 +461,270 @@ export default function Prode() {
             )}
           </div>
         )}
+
+        {/* TAB: Testing */}
+        {tab === 'testing' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+            {/* Banner advertencia */}
+            <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13 }}>
+              <span style={{ fontSize: 18 }}>⚠️</span>
+              <div>
+                <div style={{ fontWeight: 600, color: '#fbbf24', marginBottom: 2 }}>Modo testing — solo visible en desarrollo</div>
+                <div style={{ color: 'var(--gray)' }}>Estas herramientas simulan eventos reales sin afectar pedidos. Desactivadas automáticamente en producción (<code>NODE_ENV=production</code>).</div>
+              </div>
+            </div>
+
+            {/* 1. Estado del prode */}
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>📊 Estado del prode</div>
+                  <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>Resumen completo: config, fixture, pronósticos, ranking.</div>
+                </div>
+                <button className="btn btn-secondary"
+                  disabled={testLoadingEstado}
+                  onClick={async () => {
+                    setTestLoadingEstado(true);
+                    try {
+                      const r = await API.get('/prode-test/estado');
+                      setTestEstado(r.data);
+                    } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
+                    finally { setTestLoadingEstado(false); }
+                  }}>
+                  {testLoadingEstado ? 'Cargando...' : '🔍 Ver estado'}
+                </button>
+              </div>
+              {testEstado && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
+                    {[
+                      { label: 'Enabled', val: testEstado.config.enabled ? '✅' : '❌' },
+                      { label: 'Partidos', val: testEstado.fixture.total },
+                      { label: 'Pronósticos', val: testEstado.pronosticos },
+                      { label: 'Participantes', val: testEstado.rankingParticipantes },
+                    ].map(({ label, val }) => (
+                      <div key={label} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--gold)' }}>{val}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--gray)' }}>
+                    {Object.entries(testEstado.fixture.porEstado || {}).map(([k, v]) => (
+                      <span key={k} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 99, padding: '3px 10px' }}>
+                        {k}: {v}
+                      </span>
+                    ))}
+                  </div>
+                  {testEstado.ranking.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>Top ranking actual:</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {testEstado.ranking.map(r => (
+                          <div key={r.pos} style={{ display: 'flex', gap: 10, fontSize: 13, padding: '6px 10px', background: 'var(--bg)', borderRadius: 6 }}>
+                            <span style={{ color: 'var(--gray)', minWidth: 20 }}>{r.pos}°</span>
+                            <span style={{ flex: 1 }}>{r.nombre}</span>
+                            <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{r.total} pts</span>
+                            <span style={{ color: 'var(--gray)', fontSize: 11 }}>({r.pronos} pronos + {r.compras} compras)</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 2. Simular resultado */}
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>⚽ Simular resultado de partido</div>
+              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 14 }}>Marca un partido como terminado y evalúa pronósticos automáticamente.</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, marginBottom: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Partido (seleccioná del fixture)</label>
+                  <select
+                    value={simPartido.matchId}
+                    onChange={e => setSimPartido(p => ({ ...p, matchId: e.target.value }))}
+                    style={{ width: '100%' }}>
+                    <option value="">— Seleccioná un partido —</option>
+                    {fixture.filter(m => m.status === 'scheduled').map(m => (
+                      <option key={m._id} value={m._id}>
+                        {m.homeTeam} vs {m.awayTeam} · {new Date(m.matchDate).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 8, alignItems: 'center' }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>
+                      {simPartido.matchId ? fixture.find(m => m._id === simPartido.matchId)?.homeTeam || 'Local' : 'Local'}
+                    </label>
+                    <input type="number" min={0} max={20} placeholder="0"
+                      value={simPartido.homeScore}
+                      onChange={e => setSimPartido(p => ({ ...p, homeScore: e.target.value }))}
+                      style={{ textAlign: 'center', fontSize: 18 }} />
+                  </div>
+                  <div style={{ color: 'var(--gray)', fontSize: 20, fontWeight: 700, paddingTop: 22 }}>–</div>
+                  <div>
+                    <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>
+                      {simPartido.matchId ? fixture.find(m => m._id === simPartido.matchId)?.awayTeam || 'Visitante' : 'Visitante'}
+                    </label>
+                    <input type="number" min={0} max={20} placeholder="0"
+                      value={simPartido.awayScore}
+                      onChange={e => setSimPartido(p => ({ ...p, awayScore: e.target.value }))}
+                      style={{ textAlign: 'center', fontSize: 18 }} />
+                  </div>
+                </div>
+              </div>
+              <button className="btn btn-primary"
+                disabled={simLoading || !simPartido.matchId || simPartido.homeScore === '' || simPartido.awayScore === ''}
+                onClick={async () => {
+                  setSimLoading(true); setSimResult(null);
+                  try {
+                    const r = await API.post('/prode-test/simular-resultado', {
+                      matchId: simPartido.matchId,
+                      homeScore: Number(simPartido.homeScore),
+                      awayScore: Number(simPartido.awayScore),
+                    });
+                    setSimResult(r.data);
+                    load();
+                    toast.success('Resultado simulado y pronósticos evaluados');
+                  } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
+                  finally { setSimLoading(false); }
+                }}>
+                {simLoading ? 'Simulando...' : '▶ Simular resultado'}
+              </button>
+              {simResult && (
+                <div style={{ marginTop: 14, background: 'rgba(52,211,153,0.06)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: 8, padding: 14, fontSize: 13 }}>
+                  <div style={{ fontWeight: 700, color: '#34d399', marginBottom: 8 }}>✅ {simResult.partido}</div>
+                  <div style={{ color: 'var(--gray)', marginBottom: 8 }}>
+                    Pronósticos evaluados: <b style={{ color: 'var(--text)' }}>{simResult.pronosticosEvaluados}</b> ·
+                    Acertaron: <b style={{ color: '#34d399' }}>{simResult.acertaron}</b>
+                  </div>
+                  {simResult.detalle?.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+                      {simResult.detalle.map((d, i) => (
+                        <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12, padding: '4px 8px', background: 'var(--bg)', borderRadius: 5 }}>
+                          <span style={{ color: d.puntos > 0 ? '#34d399' : '#ef4444', fontWeight: 700, minWidth: 50 }}>
+                            {d.puntos > 0 ? `+${d.puntos} pts` : '0 pts'}
+                          </span>
+                          <span style={{ color: 'var(--gray)' }}>{d.predictedWinner} {d.predictedScore ? `· ${d.predictedScore}` : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button onClick={() => { setSimPartido({ matchId: '', homeScore: '', awayScore: '' }); setSimResult(null); }}
+                    style={{ marginTop: 10, background: 'none', border: '1px solid var(--border)', color: 'var(--gray)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
+                    Nueva simulación
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 3. Simular compra */}
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>🍔 Simular puntos por compra</div>
+              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 14 }}>Asigna puntos de compra a un cliente usando el mismo sistema que las órdenes reales (incluye bonificaciones).</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Cliente (del ranking)</label>
+                  <select
+                    value={simCompra.clientId}
+                    onChange={e => setSimCompra(p => ({ ...p, clientId: e.target.value }))}
+                    style={{ width: '100%' }}>
+                    <option value="">— Seleccioná cliente —</option>
+                    {ranking.map(r => (
+                      <option key={r.clientId} value={r.clientId}>{r.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Total del pedido ($)</label>
+                  <input type="number" min={0} placeholder="5000"
+                    value={simCompra.total}
+                    onChange={e => setSimCompra(p => ({ ...p, total: e.target.value }))} />
+                </div>
+              </div>
+              <button className="btn btn-primary"
+                disabled={simCompraLoading || !simCompra.clientId || !simCompra.total}
+                onClick={async () => {
+                  setSimCompraLoading(true); setSimCompraResult(null);
+                  try {
+                    const r = await API.post('/prode-test/simular-compra', {
+                      clientId: simCompra.clientId,
+                      total: Number(simCompra.total),
+                    });
+                    setSimCompraResult(r.data);
+                    load();
+                    toast.success(`+${r.data.puntosAsignados} puntos asignados`);
+                  } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
+                  finally { setSimCompraLoading(false); }
+                }}>
+                {simCompraLoading ? 'Simulando...' : '▶ Simular compra'}
+              </button>
+              {simCompraResult && (
+                <div style={{ marginTop: 14, background: 'rgba(232,184,75,0.06)', border: '1px solid rgba(232,184,75,0.2)', borderRadius: 8, padding: 14, fontSize: 13 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--gold)', marginBottom: 6 }}>+{simCompraResult.puntosAsignados} pts asignados</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    {simCompraResult.detalles?.map((d, i) => (
+                      <div key={i} style={{ color: 'var(--gray)', fontSize: 12 }}>· {d}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 4. Herramientas de limpieza */}
+            <div style={{ background: 'var(--card)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 12, padding: 20 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, color: '#ef4444' }}>🗑 Resetear datos de testing</div>
+              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 14 }}>Para volver a testear desde cero.</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button className="btn btn-secondary"
+                  style={{ borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }}
+                  disabled={cleanLoading}
+                  onClick={async () => {
+                    if (!window.confirm('¿Borrar TODOS los puntos y resetear pronósticos evaluados?')) return;
+                    setCleanLoading(true); setCleanResult(null);
+                    try {
+                      const r = await API.delete('/prode-test/limpiar-puntos');
+                      setCleanResult(r.data);
+                      load();
+                      toast.success('Datos de testing limpiados');
+                    } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
+                    finally { setCleanLoading(false); }
+                  }}>
+                  Limpiar todos los puntos
+                </button>
+                <button className="btn btn-secondary"
+                  style={{ borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }}
+                  disabled={cleanLoading || !simPartido.matchId}
+                  onClick={async () => {
+                    if (!simPartido.matchId) { toast.error('Seleccioná un partido arriba'); return; }
+                    if (!window.confirm('¿Resetear este partido a scheduled?')) return;
+                    setCleanLoading(true);
+                    try {
+                      await API.post('/prode-test/resetear-partido', { matchId: simPartido.matchId });
+                      setSimResult(null);
+                      load();
+                      toast.success('Partido reseteado a scheduled');
+                    } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
+                    finally { setCleanLoading(false); }
+                  }}>
+                  Resetear partido seleccionado
+                </button>
+              </div>
+              {cleanResult && (
+                <div style={{ marginTop: 10, fontSize: 12, color: 'var(--gray)' }}>
+                  Puntos eliminados: <b style={{ color: 'var(--text)' }}>{cleanResult.puntosEliminados}</b> ·
+                  Pronósticos reseteados: <b style={{ color: 'var(--text)' }}>{cleanResult.pronosticosReseteados}</b>
+                </div>
+              )}
+            </div>
+
+          </div>
+        )}
+
       </div>
 
       {/* Modal: Nueva bonificación */}
