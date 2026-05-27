@@ -93,11 +93,13 @@ export default function PublicProde() {
 
   const cargarProde = async (cid) => {
     try {
-      const [f, p, pts] = await Promise.all([
+      const [f, p, pts, rank] = await Promise.all([
         API.get('/prode/fixture'),
         API.get(`/prode/pronosticos/${cid}`),
         API.get(`/prode/puntos/${cid}`),
+        API.get('/prode/ranking/publico'),
       ]);
+      setRanking(rank.data);
       setFixture(f.data);
       const pMap = {};
       p.data.forEach(pr => { pMap[pr.matchId?._id || pr.matchId] = pr; });
