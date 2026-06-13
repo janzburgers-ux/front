@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Trophy, RefreshCw, Settings, CheckCircle, Calendar, Users, Star, Zap, Plus, Trash2, Gift } from 'lucide-react';
+import { Trophy, RefreshCw, Settings, CheckCircle, Calendar, Users, Star, Zap, Plus, Trash2, Gift, Eye, FileText, Search } from 'lucide-react';
 import API from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -36,6 +36,24 @@ export default function Prode() {
   const [products, setProducts] = useState([]);
   const [showAddBon, setShowAddBon] = useState(false);
   const [bonForm, setBonForm] = useState({ tipo: 'gasto_minimo', descripcion: '', montoMinimo: '', puntos: 1, productoId: '', productoNombre: '' });
+
+  // ── Predicciones (vista admin) ───────────────────────────────────────────────
+  const [predsMatchId,  setPredsMatchId ] = useState('');
+  const [predsData,     setPredsData    ] = useState([]);
+  const [predsLoading,  setPredsLoading ] = useState(false);
+
+  // ── Reset de datos de prueba ─────────────────────────────────────────────────
+  const [resetClientId,   setResetClientId  ] = useState('');
+  const [resetLoading,    setResetLoading   ] = useState(false);
+  const [confirmNuclear,  setConfirmNuclear ] = useState(false);
+  const [nuclearLoading,  setNuclearLoading ] = useState(false);
+
+  // ── Participantes ─────────────────────────────────────────────────────────────
+  const [participantes,   setParticipantes  ] = useState([]);
+  const [partsLoading,    setPartsLoading   ] = useState(false);
+  const [expandedPart,    setExpandedPart   ] = useState(null);      // clientId expandido
+  const [partPreds,       setPartPreds      ] = useState({});         // { clientId: { loading, data } }
+  const [partFilter,      setPartFilter     ] = useState('all');      // 'all' | 'ok' | 'nok'
 
   // ── Test states ─────────────────────────────────────────────────────────────
   const [testEstado,       setTestEstado      ] = useState(null);
@@ -155,6 +173,68 @@ export default function Prode() {
     } catch { toast.error('Error al eliminar'); }
   };
 
+  const loadPrediccionesByMatch = async (matchId) => {
+    if (!matchId) return;
+    setPredsLoading(true);
+    setPredsData([]);
+    try {
+      const r = await API.get(`/prode/pronosticos-admin?matchId=${matchId}`);
+      setPredsData(r.data);
+    } catch { toast.error('Error cargando predicciones'); }
+    finally { setPredsLoading(false); }
+  };
+
+  const loadParticipantes = async () => {
+    setPartsLoading(true);
+    try {
+      const r = await API.get('/prode/participantes');
+      setParticipantes(r.data);
+    } catch { toast.error('Error cargando participantes'); }
+    finally { setPartsLoading(false); }
+  };
+
+  const loadPartPreds = async (clientId) => {
+    if (expandedPart === clientId) { setExpandedPart(null); return; }
+    setExpandedPart(clientId);
+    if (partPreds[clientId]?.data) return; // ya cargado
+    setPartPreds(prev => ({ ...prev, [clientId]: { loading: true, data: null } }));
+    try {
+      const r = await API.get(`/prode/pronosticos/${clientId}`);
+      setPartPreds(prev => ({ ...prev, [clientId]: { loading: false, data: r.data } }));
+    } catch {
+      toast.error('Error cargando predicciones del participante');
+      setPartPreds(prev => ({ ...prev, [clientId]: { loading: false, data: [] } }));
+    }
+  };
+
+  const handleResetCliente = async () => {
+    if (!resetClientId) return;
+    const cliente = ranking.find(r => String(r.clientId) === resetClientId);
+    if (!window.confirm(`¿Borrar TODAS las predicciones y puntos de ${cliente?.nombre || resetClientId}? Esta acción no se puede deshacer.`)) return;
+    setResetLoading(true);
+    try {
+      const r = await API.delete(`/prode/reset-cliente/${resetClientId}`);
+      toast.success(`✓ ${r.data.pronosticosEliminados} pronósticos y ${r.data.puntosEliminados} puntos eliminados`);
+      setResetClientId('');
+      // Refrescar ranking
+      const rankRes = await API.get('/prode/ranking');
+      setRanking(rankRes.data);
+    } catch { toast.error('Error al resetear'); }
+    finally { setResetLoading(false); }
+  };
+
+  const handleNuclearReset = async () => {
+    setNuclearLoading(true);
+    try {
+      const r = await API.delete('/prode/reset-all');
+      toast.success(`💥 Reset completo — ${r.data.pronosticosEliminados} pronósticos y ${r.data.puntosEliminados} puntos eliminados`);
+      setConfirmNuclear(false);
+      const rankRes = await API.get('/prode/ranking');
+      setRanking(rankRes.data);
+    } catch { toast.error('Error en reset nuclear'); }
+    finally { setNuclearLoading(false); }
+  };
+
   // Agrupar fixture por stage/group
   const fixtureAgrupado = fixture.reduce((acc, m) => {
     const key = m.group || m.stage || 'Fixture';
@@ -177,7 +257,7 @@ export default function Prode() {
         <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Trophy size={22} color="var(--gold)" /> Prode Mundial 2026
         </h1>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" onClick={handleDebugApi} disabled={debugging} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
             {debugging ? '...' : '🔍 Debug API'}
           </button>
@@ -290,19 +370,22 @@ export default function Prode() {
         )}
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
+        <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid var(--border)', overflowX: 'auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
           {[
-            { id: 'ranking', label: 'Ranking' },
-            { id: 'fixture', label: 'Fixture' },
-            { id: 'bonificaciones', label: '🎁 Bonificaciones' },
-            { id: 'testing', label: '🧪 Testing' },
+            { id: 'ranking',       label: '🏆 Ranking'    },
+            { id: 'fixture',       label: '📅 Fixture'    },
+            { id: 'predicciones',  label: '👁 Predicciones' },
+            { id: 'participantes', label: '👥 Participantes' },
+            { id: 'bonificaciones',label: '🎁 Bonificaciones' },
+            { id: 'terminos',      label: '📋 Términos & Premios' },
+            { id: 'testing',       label: '🧪 Testing'    },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               background: 'none', border: 'none', cursor: 'pointer',
-              padding: '8px 16px', fontSize: 14, fontWeight: tab === t.id ? 600 : 400,
+              padding: '8px 14px', fontSize: 13, fontWeight: tab === t.id ? 600 : 400,
               color: tab === t.id ? 'var(--gold)' : 'var(--gray)',
               borderBottom: tab === t.id ? '2px solid var(--gold)' : '2px solid transparent',
-              marginBottom: -1,
+              marginBottom: -1, whiteSpace: 'nowrap', flexShrink: 0,
             }}>
               {t.label}
             </button>
@@ -395,6 +478,244 @@ export default function Prode() {
           </div>
         )}
 
+        {/* TAB: Participantes */}
+        {tab === 'participantes' && (() => {
+          const minPedidos = cfgForm.condicionMinPedidos ?? 0;
+          const filtered = participantes.filter(p =>
+            partFilter === 'ok'  ? p.pedidosEnPeriodo >= minPedidos :
+            partFilter === 'nok' ? p.pedidosEnPeriodo <  minPedidos : true
+          );
+          const totalParts = participantes.length;
+          const elegibles  = participantes.filter(p => p.pedidosEnPeriodo >= minPedidos).length;
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+              {/* ── Condición de premio ────────────────────────────────────── */}
+              <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 18 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  🏅 Condición para reclamar premio
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 14 }}>
+                  Los participantes que no cumplan esta condición quedarán marcados como "No elegibles" aunque tengan puntos.
+                </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, color: 'var(--text)' }}>Mínimo</span>
+                  <input
+                    type="number" min={0} max={99}
+                    value={minPedidos}
+                    onChange={e => setCfgForm(p => ({ ...p, condicionMinPedidos: Number(e.target.value) }))}
+                    style={{ width: 64, textAlign: 'center' }}
+                  />
+                  <span style={{ fontSize: 13, color: 'var(--text)' }}>compra{minPedidos !== 1 ? 's' : ''} durante el Mundial</span>
+                  <button className="btn btn-primary" onClick={handleSaveConfig} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13 }}>
+                    <CheckCircle size={13} /> Guardar condición
+                  </button>
+                </div>
+              </div>
+
+              {/* ── Stats globales + botón cargar ──────────────────────────── */}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                {participantes.length === 0 ? (
+                  <button className="btn btn-primary" disabled={partsLoading} onClick={loadParticipantes}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Users size={14} /> {partsLoading ? 'Cargando...' : 'Cargar participantes'}
+                  </button>
+                ) : (
+                  <>
+                    {[
+                      { label: 'Total participantes', value: totalParts,              color: '#E8B84B' },
+                      { label: 'Elegibles',            value: elegibles,              color: '#34d399' },
+                      { label: 'No elegibles',         value: totalParts - elegibles, color: '#f87171' },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 16px', textAlign: 'center', minWidth: 110 }}>
+                        <div style={{ fontSize: 22, fontWeight: 700, color }}>{value}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{label}</div>
+                      </div>
+                    ))}
+                    <button className="btn btn-secondary" onClick={loadParticipantes} disabled={partsLoading}
+                      style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
+                      <RefreshCw size={12} className={partsLoading ? 'spin' : ''} /> Actualizar
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {participantes.length > 0 && (
+                <>
+                  {/* Filtro */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[
+                      { id: 'all', label: 'Todos' },
+                      { id: 'ok',  label: '✅ Elegibles' },
+                      { id: 'nok', label: '❌ No elegibles' },
+                    ].map(f => (
+                      <button key={f.id} onClick={() => setPartFilter(f.id)}
+                        style={{ background: partFilter === f.id ? 'var(--gold)' : 'var(--card)', color: partFilter === f.id ? '#000' : 'var(--gray)', border: '1px solid var(--border)', borderRadius: 99, padding: '5px 14px', fontSize: 12, cursor: 'pointer', fontWeight: partFilter === f.id ? 600 : 400 }}>
+                        {f.label}
+                      </button>
+                    ))}
+                    <span style={{ fontSize: 12, color: 'var(--gray)', alignSelf: 'center', marginLeft: 6 }}>
+                      {filtered.length} de {totalParts}
+                    </span>
+                  </div>
+
+                  {/* Tabla */}
+                  <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
+                            {['#', 'Nombre', 'WhatsApp', 'Puntos', 'Pronósticos', 'Compras', 'Elegible', ''].map(h => (
+                              <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: 'var(--gray)', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered.map((p, i) => {
+                            const elegible  = p.pedidosEnPeriodo >= minPedidos;
+                            const isExpanded = expandedPart === String(p.clientId);
+                            const preds     = partPreds[String(p.clientId)];
+                            return (
+                              <>
+                                <tr key={p.clientId}
+                                  style={{ borderBottom: isExpanded ? 'none' : '1px solid var(--border)', background: isExpanded ? 'rgba(232,184,75,0.04)' : i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)', cursor: 'pointer' }}
+                                  onClick={() => loadPartPreds(String(p.clientId))}
+                                >
+                                  <td style={{ padding: '11px 12px', color: 'var(--gray)', fontWeight: 600 }}>
+                                    {i + 1 <= 3 ? ['🥇','🥈','🥉'][i] : i + 1}
+                                  </td>
+                                  <td style={{ padding: '11px 12px', fontWeight: 500 }}>{p.nombre}</td>
+                                  <td style={{ padding: '11px 12px', color: 'var(--gray)', fontSize: 12 }}>
+                                    {p.whatsapp || '—'}
+                                  </td>
+                                  <td style={{ padding: '11px 12px' }}>
+                                    <span style={{ fontWeight: 700, color: 'var(--gold)' }}>{p.puntos}</span>
+                                    <span style={{ fontSize: 11, color: 'var(--gray)', marginLeft: 4 }}>
+                                      ({p.puntosPronostico}p + {p.puntosCompra}c)
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '11px 12px', color: 'var(--text)' }}>
+                                    <span style={{ fontWeight: 500 }}>{p.pronosticos.total}</span>
+                                    <span style={{ fontSize: 11, color: 'var(--gray)', marginLeft: 4 }}>
+                                      ({p.pronosticos.acertados}✓ {p.pronosticos.exactos}⭐)
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '11px 12px' }}>
+                                    <span style={{
+                                      fontWeight: 700,
+                                      color: minPedidos > 0
+                                        ? (p.pedidosEnPeriodo >= minPedidos ? '#34d399' : '#f87171')
+                                        : 'var(--text)',
+                                    }}>
+                                      {p.pedidosEnPeriodo}
+                                    </span>
+                                    {minPedidos > 0 && (
+                                      <span style={{ fontSize: 11, color: 'var(--gray)', marginLeft: 4 }}>
+                                        / {minPedidos} min
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '11px 12px' }}>
+                                    {minPedidos === 0 ? (
+                                      <span style={{ fontSize: 11, color: 'var(--gray)' }}>Sin condición</span>
+                                    ) : elegible ? (
+                                      <span style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399', fontSize: 12, padding: '3px 10px', borderRadius: 99, fontWeight: 600 }}>✅ Elegible</span>
+                                    ) : (
+                                      <span style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontSize: 12, padding: '3px 10px', borderRadius: 99, fontWeight: 600 }}>❌ No cumple</span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '11px 12px', textAlign: 'right' }}>
+                                    <span style={{ color: isExpanded ? 'var(--gold)' : 'var(--gray)', fontSize: 16 }}>
+                                      {isExpanded ? '▲' : '▼'}
+                                    </span>
+                                  </td>
+                                </tr>
+
+                                {/* ── Predicciones expandidas ── */}
+                                {isExpanded && (
+                                  <tr key={`${p.clientId}-preds`} style={{ borderBottom: '1px solid var(--border)' }}>
+                                    <td colSpan={8} style={{ padding: '0 0 0 24px', background: 'rgba(232,184,75,0.03)' }}>
+                                      {preds?.loading ? (
+                                        <div style={{ padding: '16px 0', color: 'var(--gray)', fontSize: 13 }}>Cargando predicciones...</div>
+                                      ) : preds?.data?.length === 0 ? (
+                                        <div style={{ padding: '16px 0', color: 'var(--gray)', fontSize: 13 }}>Sin predicciones registradas.</div>
+                                      ) : preds?.data ? (
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 4 }}>
+                                          <thead>
+                                            <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                                              {['Partido', 'Fecha', 'Predicción', 'Marcador exact.', 'Resultado real', 'Estado', 'Pts'].map(h => (
+                                                <th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: 'var(--gray)', fontWeight: 500, textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
+                                              ))}
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {preds.data.map(pr => {
+                                              const m = pr.matchId;
+                                              const winLabel = pr.predictedWinner === 'home' ? m?.homeTeam : pr.predictedWinner === 'away' ? m?.awayTeam : 'Empate';
+                                              const real = m?.status === 'finished' && m?.homeScore !== null
+                                                ? `${m.homeScore}–${m.awayScore}`
+                                                : m?.status === 'live' ? '🔴 En vivo' : 'Pendiente';
+                                              const acerto = pr.evaluated && pr.pointsEarned > 0;
+                                              const esExacto = pr.evaluated && pr.predictedHome !== null && pr.predictedHome === m?.homeScore && pr.predictedAway === m?.awayScore;
+                                              return (
+                                                <tr key={pr._id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                  <td style={{ padding: '8px 10px', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                                                    {m?.homeTeam} vs {m?.awayTeam}
+                                                  </td>
+                                                  <td style={{ padding: '8px 10px', color: 'var(--gray)', whiteSpace: 'nowrap' }}>
+                                                    {m?.matchDate ? new Date(m.matchDate).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : '—'}
+                                                  </td>
+                                                  <td style={{ padding: '8px 10px' }}>
+                                                    <span style={{ color: pr.predictedWinner === 'home' ? '#93c5fd' : pr.predictedWinner === 'away' ? '#fca5a5' : '#d1d5db', fontWeight: 500 }}>
+                                                      {winLabel}
+                                                    </span>
+                                                  </td>
+                                                  <td style={{ padding: '8px 10px', color: 'var(--gray)' }}>
+                                                    {pr.predictedHome !== null ? `${pr.predictedHome}–${pr.predictedAway}` : '—'}
+                                                  </td>
+                                                  <td style={{ padding: '8px 10px', color: 'var(--gray)' }}>{real}</td>
+                                                  <td style={{ padding: '8px 10px' }}>
+                                                    {!pr.evaluated
+                                                      ? <span style={{ color: 'var(--gray)', fontSize: 11 }}>Pendiente</span>
+                                                      : esExacto
+                                                        ? <span style={{ color: '#a78bfa', fontWeight: 600 }}>⭐ Exacto</span>
+                                                        : acerto
+                                                          ? <span style={{ color: '#34d399', fontWeight: 600 }}>✓ Acertó</span>
+                                                          : <span style={{ color: '#ef4444' }}>✗ Falló</span>
+                                                    }
+                                                  </td>
+                                                  <td style={{ padding: '8px 10px', fontWeight: 700, color: pr.pointsEarned > 0 ? 'var(--gold)' : 'var(--gray)' }}>
+                                                    {pr.evaluated ? (pr.pointsEarned > 0 ? `+${pr.pointsEarned}` : '0') : '—'}
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      ) : null}
+                                    </td>
+                                  </tr>
+                                )}
+                              </>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {filtered.length === 0 && (
+                      <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--gray)' }}>
+                        No hay participantes en este filtro.
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
+
         {/* TAB: Bonificaciones */}
         {tab === 'bonificaciones' && (
           <div>
@@ -462,9 +783,316 @@ export default function Prode() {
           </div>
         )}
 
+        {/* TAB: Predicciones */}
+        {tab === 'predicciones' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Selector de partido */}
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Eye size={16} color="var(--gold)" /> Ver predicciones por partido
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 16 }}>
+                Seleccioná un partido para ver qué pronosticó cada cliente. Los pronósticos del cliente son datos propios de la plataforma y su consulta es completamente válida.
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 6 }}>Partido</label>
+                  <select
+                    value={predsMatchId}
+                    onChange={e => { setPredsMatchId(e.target.value); setPredsData([]); }}
+                    style={{ width: '100%' }}
+                  >
+                    <option value="">— Seleccioná un partido —</option>
+                    {fixture.map(m => (
+                      <option key={m._id} value={m._id}>
+                        {m.homeTeam} vs {m.awayTeam} · {new Date(m.matchDate).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })} · {m.status === 'finished' ? (m.homeScore !== null && m.awayScore !== null ? `${m.homeScore}-${m.awayScore}` : 'FIN (sin score)') : m.status === 'live' ? '🔴 EN VIVO' : 'Programado'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className="btn btn-primary"
+                  disabled={!predsMatchId || predsLoading}
+                  onClick={() => loadPrediccionesByMatch(predsMatchId)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
+                >
+                  <Search size={14} />
+                  {predsLoading ? 'Cargando...' : 'Ver predicciones'}
+                </button>
+              </div>
+            </div>
+
+            {/* Resultados */}
+            {predsLoading && (
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--gray)' }}>
+                <div className="spinner" style={{ margin: '0 auto 12px' }} />
+                Cargando predicciones...
+              </div>
+            )}
+
+            {!predsLoading && predsData.length > 0 && (() => {
+              const match = fixture.find(m => m._id === predsMatchId);
+              const total = predsData.length;
+              const homeVotes  = predsData.filter(p => p.predictedWinner === 'home').length;
+              const awayVotes  = predsData.filter(p => p.predictedWinner === 'away').length;
+              const drawVotes  = predsData.filter(p => p.predictedWinner === 'draw').length;
+              const exactos    = predsData.filter(p => p.pointsEarned >= (config?.pointsWinner || 1) + (config?.pointsExact || 5)).length;
+              const acertaron  = predsData.filter(p => p.evaluated && p.pointsEarned > 0).length;
+
+              return (
+                <>
+                  {/* Resumen estadístico */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+                    {[
+                      { label: 'Total pronósticos', value: total, color: '#E8B84B' },
+                      { label: match?.homeTeam || 'Local',  value: `${homeVotes} (${total ? Math.round(homeVotes/total*100) : 0}%)`, color: '#60a5fa' },
+                      { label: 'Empate',             value: `${drawVotes} (${total ? Math.round(drawVotes/total*100) : 0}%)`, color: '#9ca3af' },
+                      { label: match?.awayTeam || 'Visitante', value: `${awayVotes} (${total ? Math.round(awayVotes/total*100) : 0}%)`, color: '#f87171' },
+                      ...(match?.status === 'finished' ? [
+                        { label: 'Acertaron ganador', value: acertaron, color: '#34d399' },
+                        { label: 'Exacto',            value: exactos,   color: '#a78bfa' },
+                      ] : []),
+                    ].map(({ label, value, color }) => (
+                      <div key={label} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 4 }}>{label}</div>
+                        <div style={{ fontSize: 20, fontWeight: 700, color }}>{value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Tabla */}
+                  <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                    <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>
+                        {match?.homeTeam} vs {match?.awayTeam}
+                        {match?.status === 'finished' && (
+                          <span style={{ marginLeft: 10, color: 'var(--gold)', fontSize: 13 }}>
+                            Resultado: {match.homeScore !== null && match.awayScore !== null ? `${match.homeScore} – ${match.awayScore}` : 'Pendiente'}
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: 12, color: 'var(--gray)' }}>{total} pronósticos</span>
+                    </div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
+                            {['Cliente', 'WhatsApp', 'Pronóstico', 'Marcador exacto', 'Estado', 'Puntos'].map(h => (
+                              <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: 'var(--gray)', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {predsData.map((p, i) => {
+                            const winnerLabel =
+                              p.predictedWinner === 'home' ? match?.homeTeam :
+                              p.predictedWinner === 'away' ? match?.awayTeam : 'Empate';
+                            const acerto = p.evaluated && p.pointsEarned > 0;
+                            const esExacto = p.evaluated && p.predictedHome !== null &&
+                              p.predictedHome === match?.homeScore && p.predictedAway === match?.awayScore;
+                            return (
+                              <tr key={p._id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}>
+                                <td style={{ padding: '11px 14px', fontWeight: 500, color: 'var(--text)' }}>
+                                  {p.client?.name || <span style={{ color: 'var(--gray)' }}>Desconocido</span>}
+                                </td>
+                                <td style={{ padding: '11px 14px', color: 'var(--gray)', fontSize: 12 }}>
+                                  {p.client?.whatsapp || p.client?.phone || '—'}
+                                </td>
+                                <td style={{ padding: '11px 14px' }}>
+                                  <span style={{
+                                    background: p.predictedWinner === 'home' ? 'rgba(96,165,250,0.12)' : p.predictedWinner === 'away' ? 'rgba(248,113,113,0.12)' : 'rgba(156,163,175,0.12)',
+                                    color: p.predictedWinner === 'home' ? '#93c5fd' : p.predictedWinner === 'away' ? '#fca5a5' : '#d1d5db',
+                                    fontSize: 12, padding: '3px 10px', borderRadius: 99, fontWeight: 500,
+                                  }}>
+                                    {winnerLabel}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '11px 14px', color: 'var(--gray)', fontSize: 13 }}>
+                                  {p.predictedHome !== null ? `${p.predictedHome} – ${p.predictedAway}` : <span style={{ opacity: 0.4 }}>—</span>}
+                                </td>
+                                <td style={{ padding: '11px 14px' }}>
+                                  {!p.evaluated ? (
+                                    <span style={{ fontSize: 12, color: 'var(--gray)' }}>Pendiente</span>
+                                  ) : esExacto ? (
+                                    <span style={{ fontSize: 12, background: 'rgba(167,139,250,0.12)', color: '#a78bfa', padding: '3px 10px', borderRadius: 99 }}>⭐ Exacto</span>
+                                  ) : acerto ? (
+                                    <span style={{ fontSize: 12, background: 'rgba(52,211,153,0.12)', color: '#34d399', padding: '3px 10px', borderRadius: 99 }}>✓ Acertó</span>
+                                  ) : (
+                                    <span style={{ fontSize: 12, background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '3px 10px', borderRadius: 99 }}>✗ Falló</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '11px 14px', fontWeight: 700, color: p.pointsEarned > 0 ? 'var(--gold)' : 'var(--gray)' }}>
+                                  {p.evaluated ? `${p.pointsEarned > 0 ? '+' : ''}${p.pointsEarned}` : '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+
+            {!predsLoading && predsMatchId && predsData.length === 0 && !predsLoading && (
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--gray)', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12 }}>
+                <Eye size={32} style={{ opacity: 0.3, display: 'block', margin: '0 auto 12px' }} />
+                <div style={{ fontWeight: 600 }}>Sin pronósticos aún</div>
+                <div style={{ fontSize: 13, marginTop: 4 }}>Ningún cliente ha pronosticado este partido</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB: Términos & Premios */}
+        {tab === 'terminos' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Premios */}
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                🏆 Premios
+              </h3>
+              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 16 }}>
+                Estos textos aparecen en la sección "Premios" de las bases y condiciones que ven los clientes.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {[
+                  { key: 'prize1', label: '🥇 1° Puesto', placeholder: 'ej: 1 mes de Janz gratis (1 combo doble/semana × 4 semanas) + mini pelota oficial' },
+                  { key: 'prize2', label: '🥈 2° Puesto', placeholder: 'ej: Mini pelota oficial + 1 combo doble a elección' },
+                  { key: 'prize3', label: '🥉 3° Puesto', placeholder: 'ej: 1 combo doble a elección' },
+                ].map(({ key, label, placeholder }) => (
+                  <div key={key}>
+                    <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 5 }}>{label}</label>
+                    <input
+                      type="text"
+                      value={cfgForm[key] || ''}
+                      onChange={e => setCfgForm(p => ({ ...p, [key]: e.target.value }))}
+                      placeholder={placeholder}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Términos */}
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <FileText size={15} color="var(--gold)" /> Condición de Oro
+              </h3>
+              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 12 }}>
+                Requisito para ser elegible a los premios (ej: "al menos 3 compras durante el torneo").
+              </div>
+              <input
+                type="text"
+                value={cfgForm.condicionOro || ''}
+                onChange={e => setCfgForm(p => ({ ...p, condicionOro: e.target.value }))}
+                placeholder="ej: haber realizado al menos 3 compras durante el torneo"
+                style={{ width: '100%', marginBottom: 20 }}
+              />
+
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <FileText size={15} color="var(--gold)" /> Términos personalizados
+              </h3>
+              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 12 }}>
+                Texto libre que aparece en las bases. Podés usar saltos de línea.
+              </div>
+              <textarea
+                value={cfgForm.termsExtra || ''}
+                onChange={e => setCfgForm(p => ({ ...p, termsExtra: e.target.value }))}
+                rows={8}
+                placeholder="Agregá aclaraciones, reglas extra, datos de contacto, etc..."
+                style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.6 }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn-primary" onClick={handleSaveConfig} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <CheckCircle size={15} /> Guardar términos y premios
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* TAB: Testing */}
         {tab === 'testing' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+            {/* ── Reset de datos de prueba ─────────────────────────────────── */}
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>🧹</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>Limpiar datos de prueba</span>
+              </div>
+              <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                {/* Por cliente */}
+                <div>
+                  <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8, fontWeight: 500 }}>Borrar predicciones de un cliente específico</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <select
+                      value={resetClientId}
+                      onChange={e => setResetClientId(e.target.value)}
+                      style={{ flex: 1, minWidth: 180 }}
+                    >
+                      <option value="">— Seleccioná un cliente —</option>
+                      {ranking.map(r => (
+                        <option key={r.clientId} value={r.clientId}>
+                          {r.nombre} — {r.puntos} pts ({r.pronosticos} pronósticos)
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="btn btn-secondary"
+                      disabled={!resetClientId || resetLoading}
+                      onClick={handleResetCliente}
+                      style={{ whiteSpace: 'nowrap', color: resetClientId ? '#ef4444' : undefined, borderColor: resetClientId ? 'rgba(239,68,68,0.3)' : undefined }}
+                    >
+                      {resetLoading ? 'Borrando...' : '🗑 Borrar predicciones'}
+                    </button>
+                  </div>
+                  {ranking.length === 0 && (
+                    <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 6, fontStyle: 'italic' }}>No hay participantes aún en el ranking.</div>
+                  )}
+                </div>
+
+                <div style={{ height: 1, background: 'var(--border)' }} />
+
+                {/* Nuclear */}
+                <div>
+                  <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8, fontWeight: 500 }}>Reset nuclear — borrar TODOS los pronósticos y puntos</div>
+                  {!confirmNuclear ? (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => setConfirmNuclear(true)}
+                      style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                      💥 Reset completo del prode
+                    </button>
+                  ) : (
+                    <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, padding: '14px 16px' }}>
+                      <div style={{ fontSize: 13, color: '#fca5a5', marginBottom: 12, fontWeight: 500 }}>
+                        ⚠️ Esto borra <b>todos</b> los pronósticos y puntos del prode (no los partidos ni el fixture). ¿Estás seguro?
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          className="btn"
+                          disabled={nuclearLoading}
+                          onClick={handleNuclearReset}
+                          style={{ background: '#7f1d1d', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+                        >
+                          {nuclearLoading ? 'Borrando todo...' : 'Sí, borrar todo'}
+                        </button>
+                        <button className="btn btn-secondary" onClick={() => setConfirmNuclear(false)}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* Banner advertencia */}
             <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13 }}>
@@ -796,7 +1424,7 @@ export default function Prode() {
       {/* Modal configuración */}
       {editConfig && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 28, width: 480, maxWidth: '95vw' }}>
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 28, width: 480, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto' }}>
             <h2 style={{ marginBottom: 20, fontSize: 18, fontWeight: 600 }}>Configuración del Prode</h2>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -806,7 +1434,7 @@ export default function Prode() {
                 Prode habilitado
               </label>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Fecha inicio (compras)</label>
                   <input type="date" value={cfgForm.startDate ? cfgForm.startDate.split('T')[0] : ''}
@@ -819,7 +1447,7 @@ export default function Prode() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Pts por ganador</label>
                   <input type="number" min={1} value={cfgForm.pointsWinner || 1}
@@ -865,46 +1493,55 @@ function MatchRow({ match, onSetResultado, statusBadge }) {
   const timeStr = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
   const handleGuardar = () => {
-  const h = home !== '' ? Number(home) : 0;
-  const a = away !== '' ? Number(away) : 0;
-  onSetResultado(match._id, h, a);
-  setEditScore(false);
-};
+    const h = home !== '' ? Number(home) : 0;
+    const a = away !== '' ? Number(away) : 0;
+    onSetResultado(match._id, h, a);
+    setEditScore(false);
+  };
 
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-      <div style={{ fontSize: 12, color: 'var(--gray)', minWidth: 70 }}>{dateStr} {timeStr}</div>
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontWeight: 500, color: 'var(--text)', textAlign: 'right', flex: 1 }}>{match.homeTeam}</span>
-        <span style={{ fontSize: 14, fontWeight: 600, color: match.status === 'finished' ? 'var(--gold)' : 'var(--gray)', minWidth: 40, textAlign: 'center' }}>
-          {match.status === 'finished' ? `${match.homeScore} - ${match.awayScore}` : 'vs'}
-        </span>
-        <span style={{ fontWeight: 500, color: 'var(--text)', flex: 1 }}>{match.awayTeam}</span>
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 11, color: 'var(--gray)', minWidth: 64, flexShrink: 0, lineHeight: 1.4 }}>{dateStr}<br/>{timeStr}</div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 180 }}>
+          <span style={{ fontWeight: 500, color: 'var(--text)', textAlign: 'right', flex: 1, fontSize: 13 }}>{match.homeTeam}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: match.status === 'finished' ? 'var(--gold)' : 'var(--gray)', minWidth: 44, textAlign: 'center', flexShrink: 0 }}>
+            {match.status === 'finished'
+              ? (match.homeScore !== null && match.awayScore !== null
+                  ? `${match.homeScore}–${match.awayScore}`
+                  : '— FIN —')
+              : match.status === 'live'
+                ? '🔴'
+                : 'vs'}
+          </span>
+          <span style={{ fontWeight: 500, color: 'var(--text)', flex: 1, fontSize: 13 }}>{match.awayTeam}</span>
+        </div>
+        <div style={{ flexShrink: 0 }}>{statusBadge(match.status)}</div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {statusBadge(match.status)}
-        {match.status === 'scheduled' && (
-          editScore ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {match.status === 'scheduled' && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+          {editScore ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, color: 'var(--gray)' }}>Resultado:</span>
               <input type="number" min={0} max={20} value={home} onChange={e => setHome(e.target.value)}
-                style={{ width: 46, padding: '4px 6px', fontSize: 13, textAlign: 'center' }} placeholder="0" />
-              <span style={{ color: 'var(--gray)' }}>-</span>
+                style={{ width: 52, padding: '5px 6px', fontSize: 14, textAlign: 'center' }} placeholder="0" />
+              <span style={{ color: 'var(--gray)', fontWeight: 700 }}>–</span>
               <input type="number" min={0} max={20} value={away} onChange={e => setAway(e.target.value)}
-                style={{ width: 46, padding: '4px 6px', fontSize: 13, textAlign: 'center' }} placeholder="0" />
-              <button onClick={handleGuardar} style={{ background: '#166534', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
-                <CheckCircle size={13} />
+                style={{ width: 52, padding: '5px 6px', fontSize: 14, textAlign: 'center' }} placeholder="0" />
+              <button onClick={handleGuardar} style={{ background: '#166534', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <CheckCircle size={13} /> Guardar
               </button>
-              <button onClick={() => setEditScore(false)} style={{ background: 'transparent', color: 'var(--gray)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>
-                ✕
+              <button onClick={() => setEditScore(false)} style={{ background: 'transparent', color: 'var(--gray)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>
+                Cancelar
               </button>
             </div>
           ) : (
-            <button onClick={() => setEditScore(true)} style={{ background: 'transparent', color: 'var(--gray)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
-              Cargar resultado
+            <button onClick={() => setEditScore(true)} style={{ background: 'transparent', color: 'var(--gray)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}>
+              + Cargar resultado
             </button>
-          )
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

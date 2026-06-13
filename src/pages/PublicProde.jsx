@@ -51,10 +51,98 @@ function initials(name = '') {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ── BasesSection — reutilizable, fuera del componente para evitar remounts ─────
+function BasesSection({ n, title, children }) {
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#E8B84B', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>{n}. {title}</div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+// ── BasesModal — fuera del componente para no recrearse en cada render ─────────
+function BasesModal({ config, aceptoBases, setAceptoBases, setShowBases }) {
+  const C = {
+    bg: '#080808', surface: '#101010', card: '#141414', border: '#1c1c1c',
+    yellow: '#E8B84B', dim: '#252525', text: '#ffffff', text2: '#888', text3: '#444',
+  };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.96)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 999 }}>
+      <div style={{ background: '#0e0e0e', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 520, maxHeight: '88vh', overflowY: 'auto', border: `1px solid ${C.border}`, borderBottom: 'none' }}>
+        <div style={{ padding: '20px 20px 0', position: 'sticky', top: 0, background: '#0e0e0e', zIndex: 1 }}>
+          <div style={{ width: 36, height: 4, background: C.dim, borderRadius: 99, margin: '0 auto 16px' }} />
+          <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, color: C.yellow, letterSpacing: 1, marginBottom: 4 }}>
+            BASES Y CONDICIONES
+          </div>
+          <div style={{ fontSize: 11, color: C.text3, marginBottom: 14, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            PRODE JANZ — EL MUNDIAL SE JUEGA EN CASA
+          </div>
+          <div style={{ height: 1, background: C.border }} />
+        </div>
+
+        <div style={{ padding: '16px 20px', fontSize: 13, color: '#888', lineHeight: 1.7 }}>
+          <BasesSection n="1" title="¿Quiénes pueden participar?">
+            Todos los clientes de Janz Burgers con al menos un pedido realizado pueden participar gratuitamente.
+          </BasesSection>
+          <BasesSection n="2" title="Sistema de puntos">
+            <ul style={{ marginTop: 8, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <li><b style={{ color: C.yellow }}>Acierto ganador / empate:</b> {config?.pointsWinner ?? 1} punto{(config?.pointsWinner ?? 1) !== 1 ? 's' : ''}.</li>
+              <li><b style={{ color: C.yellow }}>Marcador exacto:</b> +{config?.pointsExact ?? 5} puntos extra.</li>
+              <li><b style={{ color: C.yellow }}>Puntos por compra:</b> Cada pedido suma {config?.pointsPerOrder ?? 1} punto{(config?.pointsPerOrder ?? 1) !== 1 ? 's' : ''} automáticamente.</li>
+            </ul>
+          </BasesSection>
+          <BasesSection n="3" title="Mecánica">
+            Los pronósticos cierran {config?.cutoffMinutes ?? 30} minutos antes de cada partido. No se pueden modificar una vez cerrados.
+            {config?.condicionOro && (
+              <><br/><br/><b style={{ color: C.text }}>Condición de Oro:</b> Para ser elegible a los premios finales, el participante debe haber {config.condicionOro}.</>
+            )}
+            {!config?.condicionOro && (
+              <><br/><br/><b style={{ color: C.text }}>Condición de Oro:</b> Para ser elegible a los premios finales, el participante debe haber realizado al menos 3 compras durante el torneo.</>
+            )}
+          </BasesSection>
+          <BasesSection n="4" title="Premios">
+            <ul style={{ marginTop: 8, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <li>🥇 <b style={{ color: C.yellow }}>1° Puesto:</b> {config?.prize1 || '1 mes de Janz gratis (1 combo doble/semana × 4 semanas) + mini pelota oficial'}.</li>
+              <li>🥈 <b style={{ color: '#aaa' }}>2° Puesto:</b> {config?.prize2 || 'Mini pelota oficial + 1 combo doble a elección'}.</li>
+              <li>🥉 <b style={{ color: '#cd7f32' }}>3° Puesto:</b> {config?.prize3 || '1 combo doble a elección'}.</li>
+            </ul>
+          </BasesSection>
+          <BasesSection n="5" title="Empates">
+            En caso de empate: (1) mayor cantidad de exactos, (2) mayor cantidad de compras, (3) pregunta del dueño.
+          </BasesSection>
+          {config?.termsExtra && (
+            <BasesSection n="6" title="Condiciones adicionales">
+              <div style={{ whiteSpace: 'pre-wrap' }}>{config.termsExtra}</div>
+            </BasesSection>
+          )}
+        </div>
+
+        <div style={{ padding: '16px 20px 28px', borderTop: `1px solid ${C.border}`, position: 'sticky', bottom: 0, background: '#0e0e0e' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, cursor: 'pointer' }}>
+            <input type="checkbox" checked={aceptoBases} onChange={e => setAceptoBases(e.target.checked)}
+              style={{ width: 18, height: 18, accentColor: C.yellow, cursor: 'pointer' }} />
+            <span style={{ fontSize: 13, color: C.text2 }}>Leí y acepto las bases y condiciones</span>
+          </label>
+          <button disabled={!aceptoBases}
+            onClick={() => { localStorage.setItem('janz_prode_bases', '1'); setShowBases(false); }}
+            style={{ width: '100%', background: aceptoBases ? C.yellow : C.dim, color: aceptoBases ? '#000' : C.text3, border: 'none', borderRadius: 12, padding: 14, fontFamily: 'Bebas Neue, sans-serif', fontSize: 17, letterSpacing: 1, cursor: aceptoBases ? 'pointer' : 'not-allowed', transition: 'all 0.2s' }}>
+            PARTICIPAR →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PublicProde() {
   const [fase,        setFase       ] = useState('loading');
   const [whatsapp,    setWhatsapp   ] = useState('');
   const [loginLoading,setLoginLoading] = useState(false);
+  const [otpCode,     setOtpCode    ] = useState('');
+  const [otpNombre,   setOtpNombre  ] = useState('');
+  const [resendSecs,  setResendSecs ] = useState(0);
+  const resendTimerRef = useRef(null);
   const [clientId,    setClientId   ] = useState(null);
   const [nombre,      setNombre     ] = useState('');
   const [fixture,     setFixture    ] = useState([]);
@@ -93,18 +181,35 @@ export default function PublicProde() {
 
   const cargarProde = async (cid) => {
     try {
-      const [f, p, pts, rank] = await Promise.all([
+      const [fRes, pRes, ptsRes, rankRes] = await Promise.allSettled([
         API.get('/prode/fixture'),
         API.get(`/prode/pronosticos/${cid}`),
         API.get(`/prode/puntos/${cid}`),
         API.get('/prode/ranking/publico'),
       ]);
-      setRanking(rank.data);
-      setFixture(f.data);
-      const pMap = {};
-      p.data.forEach(pr => { pMap[pr.matchId?._id || pr.matchId] = pr; });
-      setPronosticos(pMap);
-      setPuntos(pts.data);
+
+      if (fRes.status === 'rejected') {
+        toast.error('Error cargando el prode');
+        setFase('login');
+        return;
+      }
+
+      setFixture(fRes.value.data);
+
+      if (pRes.status === 'fulfilled') {
+        const pMap = {};
+        pRes.value.data.forEach(pr => { pMap[pr.matchId?._id || pr.matchId] = pr; });
+        setPronosticos(pMap);
+      }
+
+      if (ptsRes.status === 'fulfilled') {
+        setPuntos(ptsRes.value.data);
+      }
+
+      if (rankRes.status === 'fulfilled') {
+        setRanking(rankRes.value.data);
+      }
+
       setFase('prode');
     } catch {
       toast.error('Error cargando el prode');
@@ -112,20 +217,67 @@ export default function PublicProde() {
     }
   };
 
-  const handleLogin = async () => {
+  // Iniciar countdown para reenvío
+  const startResendTimer = () => {
+    setResendSecs(60);
+    clearInterval(resendTimerRef.current);
+    resendTimerRef.current = setInterval(() => {
+      setResendSecs(s => {
+        if (s <= 1) { clearInterval(resendTimerRef.current); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+  };
+
+  // Paso 1 — validar WA y enviar código OTP
+  const handleSolicitarCodigo = async () => {
     if (!whatsapp.trim()) return;
     setLoginLoading(true);
     try {
-      const res = await API.post('/prode/acceso', { whatsapp });
+      const res = await API.post('/prode/acceso/codigo', { whatsapp });
+      setOtpNombre(res.data.nombre);
+      setOtpCode('');
+      setFase('otp');
+      startResendTimer();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Error al enviar código');
+    } finally { setLoginLoading(false); }
+  };
+
+  // Paso 2 — verificar código OTP
+  const handleVerificarCodigo = async () => {
+    if (otpCode.trim().length < 4) return;
+    setLoginLoading(true);
+    try {
+      const res = await API.post('/prode/acceso/verificar', { whatsapp, code: otpCode });
       const { clientId: cid, nombre: nom } = res.data;
       setClientId(cid); setNombre(nom);
       localStorage.setItem('janz_prode_client', JSON.stringify({ clientId: cid, nombre: nom }));
+      clearInterval(resendTimerRef.current);
       setFase('cargando_prode');
       await cargarProde(cid);
     } catch (e) {
-      toast.error(e.response?.data?.message || 'Error al ingresar');
+      toast.error(e.response?.data?.message || 'Código incorrecto');
+      setOtpCode('');
     } finally { setLoginLoading(false); }
   };
+
+  // Reenviar código
+  const handleReenviarCodigo = async () => {
+    if (resendSecs > 0) return;
+    setLoginLoading(true);
+    try {
+      await API.post('/prode/acceso/codigo', { whatsapp });
+      setOtpCode('');
+      toast.success('Nuevo código enviado 👍');
+      startResendTimer();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Error al reenviar');
+    } finally { setLoginLoading(false); }
+  };
+
+  // Mantener retrocompat: handleLogin → solicitar código
+  const handleLogin = handleSolicitarCodigo;
 
   const handlePronostico = async (matchId, predictedWinner, predictedHome = null, predictedAway = null) => {
     setSaving(matchId);
@@ -186,75 +338,14 @@ export default function PublicProde() {
     </div>
   );
 
-  // ── BASES MODAL ───────────────────────────────────────────────────────────
-  const BasesModal = () => (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.96)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 999 }}>
-      <div style={{ background: '#0e0e0e', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 520, maxHeight: '88vh', overflowY: 'auto', border: `1px solid ${C.border}`, borderBottom: 'none' }}>
-        <div style={{ padding: '20px 20px 0', position: 'sticky', top: 0, background: '#0e0e0e', zIndex: 1 }}>
-          <div style={{ width: 36, height: 4, background: C.dim, borderRadius: 99, margin: '0 auto 16px' }} />
-          <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, color: C.yellow, letterSpacing: 1, marginBottom: 4 }}>
-            BASES Y CONDICIONES
-          </div>
-          <div style={{ fontSize: 11, color: C.text3, marginBottom: 14, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-            PRODE JANZ — EL MUNDIAL SE JUEGA EN CASA
-          </div>
-          <div style={{ height: 1, background: C.border }} />
-        </div>
 
-        <div style={{ padding: '16px 20px', fontSize: 13, color: '#888', lineHeight: 1.7 }}>
-          <BasesSection n="1" title="¿Quiénes pueden participar?">
-            Todos los clientes de Janz Burgers con al menos un pedido realizado pueden participar gratuitamente.
-          </BasesSection>
-          <BasesSection n="2" title="Sistema de puntos">
-            <ul style={{ marginTop: 8, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <li><b style={{ color: C.yellow }}>Acierto ganador / empate:</b> {config?.pointsWinner ?? 1} punto{(config?.pointsWinner ?? 1) !== 1 ? 's' : ''}.</li>
-              <li><b style={{ color: C.yellow }}>Marcador exacto:</b> +{config?.pointsExact ?? 5} puntos extra.</li>
-              <li><b style={{ color: C.yellow }}>Puntos por compra:</b> Cada pedido suma {config?.pointsPerOrder ?? 1} punto{(config?.pointsPerOrder ?? 1) !== 1 ? 's' : ''} automáticamente.</li>
-            </ul>
-          </BasesSection>
-          <BasesSection n="3" title="Mecánica">
-            Los pronósticos cierran {config?.cutoffMinutes ?? 30} minutos antes de cada partido. No se pueden modificar una vez cerrados.
-            <br/><br/><b style={{ color: C.text }}>Condición de Oro:</b> Para ser elegible a los premios finales, el participante debe haber realizado al menos 3 compras durante el torneo.
-          </BasesSection>
-          <BasesSection n="4" title="Premios">
-            <ul style={{ marginTop: 8, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <li>🥇 <b style={{ color: C.yellow }}>1° Puesto:</b> 1 mes de Janz gratis (1 combo doble/semana × 4 semanas) + mini pelota oficial.</li>
-              <li>🥈 <b style={{ color: '#aaa' }}>2° Puesto:</b> Mini pelota oficial + 1 combo doble a elección.</li>
-              <li>🥉 <b style={{ color: '#cd7f32' }}>3° Puesto:</b> 1 combo doble a elección.</li>
-            </ul>
-          </BasesSection>
-          <BasesSection n="5" title="Empates">
-            En caso de empate: (1) mayor cantidad de exactos, (2) mayor cantidad de compras, (3) pregunta del dueño.
-          </BasesSection>
-        </div>
 
-        <div style={{ padding: '16px 20px 28px', borderTop: `1px solid ${C.border}`, position: 'sticky', bottom: 0, background: '#0e0e0e' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, cursor: 'pointer' }}>
-            <input type="checkbox" checked={aceptoBases} onChange={e => setAceptoBases(e.target.checked)}
-              style={{ width: 18, height: 18, accentColor: C.yellow, cursor: 'pointer' }} />
-            <span style={{ fontSize: 13, color: C.text2 }}>Leí y acepto las bases y condiciones</span>
-          </label>
-          <button disabled={!aceptoBases}
-            onClick={() => { localStorage.setItem('janz_prode_bases', '1'); setShowBases(false); }}
-            style={{ width: '100%', background: aceptoBases ? C.yellow : C.dim, color: aceptoBases ? '#000' : C.text3, border: 'none', borderRadius: 12, padding: 14, fontFamily: 'Bebas Neue, sans-serif', fontSize: 17, letterSpacing: 1, cursor: aceptoBases ? 'pointer' : 'not-allowed', transition: 'all 0.2s' }}>
-            PARTICIPAR →
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 
-  const BasesSection = ({ n, title, children }) => (
-    <div style={{ marginBottom: 18 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: C.yellow, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>{n}. {title}</div>
-      <div>{children}</div>
-    </div>
-  );
 
   // ── LOGIN / LANDING ───────────────────────────────────────────────────────
   if (fase === 'login') return (
     <div style={{ minHeight: '100vh', background: C.bg, color: C.text, fontFamily: 'Inter, sans-serif', overflowX: 'hidden' }}>
-      {showBases && <BasesModal />}
+      {showBases && <BasesModal config={config} aceptoBases={aceptoBases} setAceptoBases={setAceptoBases} setShowBases={setShowBases} />}
 
       {/* Hero */}
       <div style={{ position: 'relative', padding: '48px 24px 32px', overflow: 'hidden' }}>
@@ -309,13 +400,13 @@ export default function PublicProde() {
             type="tel"
             value={whatsapp}
             onChange={e => setWhatsapp(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            onKeyDown={e => e.key === 'Enter' && handleSolicitarCodigo()}
             placeholder="Ej: 1134567890"
             style={{ width: '100%', background: C.card, border: `1px solid ${C.border2}`, borderRadius: 12, color: C.text, padding: '13px 16px', fontSize: 16, outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
           />
-          <button onClick={handleLogin} disabled={loginLoading || !whatsapp.trim()}
+          <button onClick={handleSolicitarCodigo} disabled={loginLoading || !whatsapp.trim()}
             style={{ width: '100%', background: loginLoading || !whatsapp.trim() ? C.dim : C.yellow, color: loginLoading || !whatsapp.trim() ? C.text3 : '#000', border: 'none', borderRadius: 12, padding: 14, fontFamily: 'Bebas Neue, sans-serif', fontSize: 17, letterSpacing: 1, cursor: loginLoading || !whatsapp.trim() ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}>
-            {loginLoading ? 'VERIFICANDO...' : 'ENTRAR AL PRODE →'}
+            {loginLoading ? 'ENVIANDO...' : 'ENVIAR CÓDIGO →'}
           </button>
 
           <button onClick={() => setShowBases(true)}
@@ -330,9 +421,9 @@ export default function PublicProde() {
         <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10, textAlign: 'center' }}>Premios</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {[
-            { pos: '🥇', txt: '1 mes de Janz gratis + Mini pelota oficial' },
-            { pos: '🥈', txt: 'Mini pelota oficial + Combo doble' },
-            { pos: '🥉', txt: 'Combo doble a elección' },
+            { pos: '🥇', txt: config?.prize1 || '1 mes de Janz gratis + Mini pelota oficial' },
+            { pos: '🥈', txt: config?.prize2 || 'Mini pelota oficial + Combo doble' },
+            { pos: '🥉', txt: config?.prize3 || 'Combo doble a elección' },
           ].map(({ pos, txt }) => (
             <div key={pos} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 18 }}>{pos}</span>
@@ -347,7 +438,7 @@ export default function PublicProde() {
         <div style={{ padding: '20px 20px 40px', maxWidth: 400, margin: '0 auto' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10, textAlign: 'center' }}>Top 5 actual</div>
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, overflow: 'hidden' }}>
-            {ranking.map((r, i) => (
+            {ranking.slice(0, 5).map((r, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: i < ranking.length - 1 ? `1px solid ${C.border}` : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span style={{ fontSize: 15, minWidth: 22 }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}°`}</span>
@@ -362,9 +453,98 @@ export default function PublicProde() {
     </div>
   );
 
+  // ── OTP — pantalla de verificación ───────────────────────────────────────
+  if (fase === 'otp') return (
+    <div style={{ minHeight: '100vh', background: C.bg, color: C.text, fontFamily: 'Inter, sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 20px' }}>
+
+      {/* Card central */}
+      <div style={{ width: '100%', maxWidth: 380, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 20, overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ background: 'linear-gradient(135deg, #0f1a08 0%, #0a1205 100%)', borderBottom: `1px solid ${C.border}`, padding: '28px 24px 20px', textAlign: 'center' }}>
+          <div style={{ width: 56, height: 56, background: 'rgba(232,184,75,0.1)', border: `1px solid ${C.yellow}44`, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, margin: '0 auto 14px' }}>
+            💬
+          </div>
+          <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, color: C.yellow, letterSpacing: 1, marginBottom: 6 }}>
+            CÓDIGO ENVIADO
+          </div>
+          <div style={{ fontSize: 13, color: C.text2, lineHeight: 1.5 }}>
+            {otpNombre ? `¡Hola, ${otpNombre}! ` : ''}Te mandamos un código de 6 dígitos por WhatsApp al número{' '}
+            <span style={{ color: C.text, fontWeight: 500 }}>
+              {whatsapp.replace(/(\d{2})(\d+)(\d{4})/, (_, a, m, e) => `${a}${'*'.repeat(m.length)}${e}`)}
+            </span>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '24px 24px 28px' }}>
+          {/* Input del código */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 11, color: C.text3, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 8 }}>
+              Código de verificación
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={4}
+              value={otpCode}
+              onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onKeyDown={e => e.key === 'Enter' && handleVerificarCodigo()}
+              autoFocus
+              placeholder="0000"
+              style={{
+                width: '100%', background: C.card, border: `2px solid ${otpCode.length === 6 ? C.yellow : C.border2}`,
+                borderRadius: 14, color: C.text, padding: '16px 20px', fontSize: 28, letterSpacing: '0.5em',
+                outline: 'none', boxSizing: 'border-box', textAlign: 'center', fontFamily: 'monospace',
+                transition: 'border-color 0.2s',
+              }}
+            />
+          </div>
+
+          {/* Botón verificar */}
+          <button
+            onClick={handleVerificarCodigo}
+            disabled={loginLoading || otpCode.length < 4}
+            style={{ width: '100%', background: loginLoading || otpCode.length < 4 ? C.dim : C.yellow, color: loginLoading || otpCode.length < 4 ? C.text3 : '#000', border: 'none', borderRadius: 12, padding: 14, fontFamily: 'Bebas Neue, sans-serif', fontSize: 17, letterSpacing: 1, cursor: loginLoading || otpCode.length < 4 ? 'not-allowed' : 'pointer', transition: 'all 0.2s', marginBottom: 16 }}
+          >
+            {loginLoading ? 'VERIFICANDO...' : 'INGRESAR AL PRODE →'}
+          </button>
+
+          {/* Reenviar y cambiar número */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button
+              onClick={handleReenviarCodigo}
+              disabled={resendSecs > 0 || loginLoading}
+              style={{ background: 'none', border: 'none', color: resendSecs > 0 ? C.text3 : C.yellow, fontSize: 13, cursor: resendSecs > 0 ? 'not-allowed' : 'pointer', padding: 0 }}
+            >
+              {resendSecs > 0 ? `Reenviar en ${resendSecs}s` : 'Reenviar código'}
+            </button>
+            <button
+              onClick={() => { setFase('login'); setOtpCode(''); clearInterval(resendTimerRef.current); }}
+              style={{ background: 'none', border: 'none', color: C.text3, fontSize: 13, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+            >
+              Cambiar número
+            </button>
+          </div>
+
+          {/* Hint */}
+          <div style={{ marginTop: 20, background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: C.text3, lineHeight: 1.5 }}>
+            ⏱ El código expira en <b style={{ color: C.text2 }}>5 minutos</b>. Si no lo recibiste, revisá que el número sea el mismo con el que pediste.
+          </div>
+        </div>
+      </div>
+
+      {/* Logo abajo */}
+      <div style={{ marginTop: 24, fontFamily: 'Bebas Neue, sans-serif', fontSize: 15, color: C.text3, letterSpacing: 2 }}>JANZ BURGERS 🍔</div>
+    </div>
+  );
+
   // ── PRODE PRINCIPAL ───────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: '100vh', background: C.bg, color: C.text, fontFamily: 'Inter, sans-serif', paddingBottom: 72 }}>
+
+      {showBases && <BasesModal config={config} aceptoBases={aceptoBases} setAceptoBases={setAceptoBases} setShowBases={setShowBases} />}
 
       {/* Header sticky */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10 }}>
@@ -376,6 +556,9 @@ export default function PublicProde() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button onClick={() => setShowBases(true)} style={{ background: 'none', border: 'none', color: C.text3, fontSize: 11, cursor: 'pointer', textDecoration: 'underline', padding: '0 4px' }}>
+            Bases
+          </button>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, color: C.yellow, lineHeight: 1, letterSpacing: 1 }}>{puntos.total}</div>
             <div style={{ fontSize: 10, color: C.text3 }}>pts</div>
@@ -610,7 +793,12 @@ function MatchCard({ match, pronostico, onPronostico, saving, config }) {
   const pts       = pronostico?.pointsEarned || 0;
 
   const handleToggleExact = () => {
-    if (!showExact) setLocalWinner(selected || null);
+    if (!showExact) {
+      setLocalWinner(selected || null);
+      // Pre-llenar goles del pronóstico existente para que no se borren al re-abrir
+      if (pronostico?.predictedHome != null) setHomeGoals(String(pronostico.predictedHome));
+      if (pronostico?.predictedAway != null) setAwayGoals(String(pronostico.predictedAway));
+    }
     setShowExact(s => !s);
   };
   const handleGuardarConExacto = () => {
@@ -618,6 +806,17 @@ function MatchCard({ match, pronostico, onPronostico, saving, config }) {
     onPronostico(match._id, localWinner, homeGoals !== '' ? Number(homeGoals) : null, awayGoals !== '' ? Number(awayGoals) : null);
     setShowExact(false);
   };
+
+  // Auto-deduce el ganador cuando el usuario ingresa el score exacto
+  const deriveWinner = (h, a) => {
+    const hn = Number(h), an = Number(a);
+    if (h === '' || a === '') return;
+    if (hn > an) setLocalWinner('home');
+    else if (an > hn) setLocalWinner('away');
+    else setLocalWinner('draw');
+  };
+  const handleHomeChange = (val) => { setHomeGoals(val); deriveWinner(val, awayGoals); };
+  const handleAwayChange = (val) => { setAwayGoals(val); deriveWinner(homeGoals, val); };
 
   const btnBg = (val) => {
     const isSelected = showExact ? localWinner === val : selected === val;
@@ -666,7 +865,13 @@ function MatchCard({ match, pronostico, onPronostico, saving, config }) {
         </div>
         <span style={{ flex: 1, fontSize: 13, fontWeight: 700, textAlign: 'right', lineHeight: 1.2 }}>{match.homeTeam}</span>
         <span style={{ fontSize: match.status === 'finished' ? 15 : 12, fontWeight: 900, color: match.status === 'finished' ? '#E8B84B' : '#1c1c1c', minWidth: 44, textAlign: 'center', fontFamily: match.status === 'finished' ? 'Bebas Neue, sans-serif' : 'inherit', letterSpacing: match.status === 'finished' ? 1 : 0 }}>
-          {match.status === 'finished' ? `${match.homeScore}—${match.awayScore}` : 'vs'}
+          {match.status === 'finished'
+            ? (match.homeScore !== null && match.awayScore !== null
+                ? `${match.homeScore}—${match.awayScore}`
+                : 'FIN')
+            : match.status === 'live'
+              ? '🔴'
+              : 'vs'}
         </span>
         <span style={{ flex: 1, fontSize: 13, fontWeight: 700, lineHeight: 1.2 }}>{match.awayTeam}</span>
         <div style={{ width: 28, height: 28, flexShrink: 0 }}>
@@ -700,10 +905,10 @@ function MatchCard({ match, pronostico, onPronostico, saving, config }) {
           {showExact && (
             <div style={{ marginTop: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 8 }}>
-                <input type="number" min={0} max={20} value={homeGoals} onChange={e => setHomeGoals(e.target.value)} placeholder="0"
+                <input type="number" min={0} max={20} value={homeGoals} onChange={e => handleHomeChange(e.target.value)} placeholder="0"
                   style={{ width: 52, textAlign: 'center', background: '#141414', border: '1px solid #1c1c1c', borderRadius: 8, color: '#fff', padding: 8, fontSize: 18, outline: 'none' }} />
                 <span style={{ color: '#1c1c1c', fontWeight: 900, fontSize: 18 }}>—</span>
-                <input type="number" min={0} max={20} value={awayGoals} onChange={e => setAwayGoals(e.target.value)} placeholder="0"
+                <input type="number" min={0} max={20} value={awayGoals} onChange={e => handleAwayChange(e.target.value)} placeholder="0"
                   style={{ width: 52, textAlign: 'center', background: '#141414', border: '1px solid #1c1c1c', borderRadius: 8, color: '#fff', padding: 8, fontSize: 18, outline: 'none' }} />
               </div>
               <button onClick={handleGuardarConExacto} disabled={!localWinner || saving}
