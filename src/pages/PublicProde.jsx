@@ -437,7 +437,7 @@ export default function PublicProde() {
           <p style={{ color: C.text2, fontSize: 12, marginTop: 0, marginBottom: 18, lineHeight: 1.5 }}>
             {loginMode === 'cliente'
               ? 'Ingresá con el WhatsApp que usaste al registrarte (o al pedir en Janz). Te mandamos un código de verificación.'
-              : 'Solo nombre y WhatsApp. Si ya compraste en Janz antes, usá la opción "Ya me registré". Recibís cupón 20% para tu primera compra.'}
+              : 'Solo nombre y WhatsApp. Si ya compraste en Janz antes, usá la opción "Ya me registré". Recibís cupón 15% para tu primera compra.'}
           </p>
 
           {loginMode === 'invitado' && (
