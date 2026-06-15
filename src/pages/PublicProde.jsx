@@ -334,13 +334,16 @@ export default function PublicProde() {
     ? fixture
     : fixture.filter(m => m.stage === stageFilter);
 
-  // Agrupar fixture filtrado
-  const grupos = fixtureFiltrado.reduce((acc, m) => {
-    const key = m.group && m.group !== '' ? m.group : m.stage || 'Fixture';
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(m);
-    return acc;
-  }, {});
+  // Agrupar fixture filtrado por fecha
+  const grupos = [...fixtureFiltrado]
+    .sort((a, b) => new Date(a.matchDate) - new Date(b.matchDate))
+    .reduce((acc, m) => {
+      const d = new Date(m.matchDate);
+      const key = d.toISOString().slice(0, 10); // YYYY-MM-DD como clave de orden
+      if (!acc[key]) acc[key] = { label: d.toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long' }), matches: [] };
+      acc[key].matches.push(m);
+      return acc;
+    }, {});
 
   // Próximo partido sin pronosticar
   const proximo = fixture.find(m =>
@@ -434,7 +437,7 @@ export default function PublicProde() {
           <p style={{ color: C.text2, fontSize: 12, marginTop: 0, marginBottom: 18, lineHeight: 1.5 }}>
             {loginMode === 'cliente'
               ? 'Ingresá con el WhatsApp que usaste al registrarte (o al pedir en Janz). Te mandamos un código de verificación.'
-              : 'Solo nombre y WhatsApp. Si ya compraste en Janz antes, usá la opción "Ya me registré". Recibís cupón 15% para tu primera compra.'}
+              : 'Solo nombre y WhatsApp. Si ya compraste en Janz antes, usá la opción "Ya me registré". Recibís cupón 20% para tu primera compra.'}
           </p>
 
           {loginMode === 'invitado' && (
@@ -710,10 +713,10 @@ export default function PublicProde() {
                   No hay partidos en esta etapa todavía.
                 </div>
               ) : (
-                Object.entries(grupos).map(([grupo, matches]) => (
-                  <div key={grupo}>
+                Object.entries(grupos).map(([dateKey, { label, matches }]) => (
+                  <div key={dateKey}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, textTransform: 'uppercase', letterSpacing: '0.1em', padding: '8px 2px 6px' }}>
-                      {grupo} · <span style={{ color: C.text2 }}>{matches.filter(m => pronosticos[m._id]).length}/{matches.length}</span>
+                      {label} · <span style={{ color: C.text2 }}>{matches.filter(m => pronosticos[m._id]).length}/{matches.length}</span>
                     </div>
                     {matches.map(m => (
                       <MatchCard key={m._id} match={m} pronostico={pronosticos[m._id]}
@@ -732,29 +735,46 @@ export default function PublicProde() {
             <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 28, color: C.yellow, letterSpacing: 2, marginBottom: 14 }}>RANKING GENERAL</div>
             {ranking.length === 0 ? (
               <div style={{ textAlign: 'center', color: C.text3, padding: 40 }}>Aún no hay participantes.</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {ranking.map((r, i) => {
-                  const isMe = String(r._id) === String(clientId);
-                  const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
-                  return (
-                    <div key={i} style={{ background: isMe ? C.yellowBg2 : C.surface, border: `1px solid ${isMe ? C.yellow + '44' : C.border}`, borderRadius: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, transition: 'all 0.2s' }}>
-                      <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, minWidth: 32, textAlign: 'center', color: medal ? C.text : C.text3, letterSpacing: 0 }}>
-                        {medal || `${i + 1}`}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: isMe ? C.yellow : C.text }}>
-                          {r.nombre} {isMe && <span style={{ fontSize: 10, background: C.yellowBg2, color: C.yellow, border: `1px solid ${C.yellow}44`, borderRadius: 99, padding: '2px 7px', marginLeft: 4, fontWeight: 600 }}>vos</span>}
-                        </div>
-                      </div>
-                      <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, color: C.yellow, letterSpacing: 1 }}>
-                        {r.totalPuntos}
+            ) : (() => {
+              const top5      = ranking.slice(0, 5);
+              const myIndex   = ranking.findIndex(r => String(r._id) === String(clientId));
+              const inTop5    = myIndex !== -1 && myIndex < 5;
+              const myEntry   = myIndex !== -1 ? ranking[myIndex] : null;
+
+              const renderRow = (r, i, forceHighlight = false) => {
+                const isMe  = String(r._id) === String(clientId);
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+                return (
+                  <div key={i} style={{ background: (isMe || forceHighlight) ? C.yellowBg2 : C.surface, border: `1px solid ${(isMe || forceHighlight) ? C.yellow + '44' : C.border}`, borderRadius: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, transition: 'all 0.2s' }}>
+                    <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, minWidth: 32, textAlign: 'center', color: medal ? C.text : C.text3, letterSpacing: 0 }}>
+                      {medal || `${i + 1}`}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: (isMe || forceHighlight) ? C.yellow : C.text }}>
+                        {r.nombre} {isMe && <span style={{ fontSize: 10, background: C.yellowBg2, color: C.yellow, border: `1px solid ${C.yellow}44`, borderRadius: 99, padding: '2px 7px', marginLeft: 4, fontWeight: 600 }}>vos</span>}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                    <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, color: C.yellow, letterSpacing: 1 }}>
+                      {r.totalPuntos}
+                    </div>
+                  </div>
+                );
+              };
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {top5.map((r, i) => renderRow(r, i))}
+
+                  {/* Si el cliente existe y está fuera del top 5, mostrarlo separado */}
+                  {!inTop5 && myEntry && (
+                    <>
+                      <div style={{ textAlign: 'center', color: C.text3, fontSize: 18, letterSpacing: 2, padding: '2px 0' }}>···</div>
+                      {renderRow(myEntry, myIndex)}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
