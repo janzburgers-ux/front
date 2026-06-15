@@ -561,7 +561,7 @@ export default function Dashboard() {
         {/* Selector de mes */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
           <button onClick={prevMonth} style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer' }}><ChevronLeft size={20}/></button>
-          <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.4rem', color: 'var(--gold)', minWidth: 200, textAlign: 'center' }}>
+          <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.4rem', color: 'var(--gold)', minWidth: 0, flex: 1, textAlign: 'center' }}>
             {months[month - 1]} {year}
           </div>
           <button onClick={nextMonth} style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer' }}><ChevronRight size={20}/></button>
@@ -750,7 +750,7 @@ export default function Dashboard() {
                 <div style={{ fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Clock size={16} color="var(--gold)" /> Tiempos de entrega del mes
                 </div>
-                <div style={{ display: 'flex', gap: 24, marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 24, marginBottom: 16, flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>PROMEDIO</div>
                     <div style={{ fontFamily: 'Bebas Neue', fontSize: '2rem', color: sales.avgDeliveryTime > 30 ? '#f59e0b' : '#22c55e' }}>
