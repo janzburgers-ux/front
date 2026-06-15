@@ -93,7 +93,7 @@ function AlertsPanel({ onClose }) {
   return (
     <div style={{
       position: 'fixed', top: 0, right: 0, bottom: 0, width: 340,
-      background: '#111', borderLeft: '1px solid var(--border)',
+      background: 'transparent', borderLeft: '1px solid var(--border)',
       zIndex: 300, display: 'flex', flexDirection: 'column',
       boxShadow: '-4px 0 24px rgba(0,0,0,0.5)'
     }}>

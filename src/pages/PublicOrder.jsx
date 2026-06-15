@@ -6,6 +6,17 @@ import API from '../utils/api';
 import toast from 'react-hot-toast';
 import logoJanz from '../assets/logo-janz.png';
 import heroBurger from '../assets/hero-burger.png';
+import {
+  MundialIntroAnimation,
+  MundialHeroBadge,
+  MundialBanner,
+  MatchCountdown,
+  MundialCountdownCard,
+  ArgentinaGanoBar,
+  MundialProductBadge,
+  showGoalToast,
+  MUNDIAL_BADGES,
+} from '../components/ModoMundial';
 
 const GOLD = '#E8B84B';
 const fmt = n => `$${Number(n || 0).toLocaleString('es-AR')}`;
@@ -266,6 +277,16 @@ export default function PublicOrder() {
   });
   const [countdown, setCountdown]                       = useState('');
   const [activeSection, setActiveSection]               = useState('burgers');
+
+  // ── Modo Mundial ─────────────────────────────────────────────────
+  const [mundialIntroSeen, setMundialIntroSeen]         = useState(() => {
+    try { return !!localStorage.getItem('janz_mundial_seen'); } catch { return true; }
+  });
+  const [mundialMode,    setMundialMode]                = useState(false);
+  const [nextMatch,      setNextMatch]                  = useState(null);
+  const [argentinaGano,  setArgentinaGano]              = useState(false);
+  const [todayOverride,  setTodayOverride]              = useState(null);
+  const [heroImageUrl,   setHeroImageUrl]               = useState(null);
   const [slotOccupancy, setSlotOccupancy]               = useState({});
   const [maxOrdersPerSlot, setMaxOrdersPerSlot]         = useState(5);
   const sectionRefs = useRef({});
@@ -281,6 +302,7 @@ export default function PublicOrder() {
       if (r.data.businessWhatsapp) setBusinessWhatsapp(r.data.businessWhatsapp);
       if (r.data.dailyDeal) setDailyDeal(r.data.dailyDeal);
       if (r.data.monthlyBurger) setMonthlyBurger(r.data.monthlyBurger);
+      if (r.data.todayOverride) setTodayOverride(r.data.todayOverride);
     }).catch(() => setSystemDown(true)).finally(() => setLoading(false));
     const params = new URLSearchParams(window.location.search);
     const cid = params.get('clientId');
@@ -292,6 +314,10 @@ export default function PublicOrder() {
       if (r.data.hourlyDiscount?.enabled) setHourlyDiscount(r.data.hourlyDiscount);
       if (r.data.schedule) setSchedule({ ...r.data.schedule, days: r.data.schedule.days || [] });
       if (r.data.maxOrdersPerSlot) setMaxOrdersPerSlot(r.data.maxOrdersPerSlot);
+      if (r.data.nextMatch)      setNextMatch(r.data.nextMatch);
+      if (r.data.argentinaGano)  setArgentinaGano(true);
+      if (r.data.mundialMode)    setMundialMode(true);
+      if (r.data.heroImage?.url) setHeroImageUrl(r.data.heroImage.url);
     }).catch(() => {});
     API.get('/public/slots-availability').then(r => {
       setSlotOccupancy(r.data.occupancy || {});
@@ -426,7 +452,10 @@ export default function PublicOrder() {
     else if (availableAdditionals.length > 0) { setAdditionalsModal(product); window.scrollTo({ top: 0, behavior: 'smooth' }); }
     else addProductToCart(product, []);
   };
-  const addProductToCart = (product, additionals) => setCart(c => [...c, { product: product._id, productName: product.name, variant: product.variant, productType: product.productType || 'burger', quantity: 1, unitPrice: product.salePrice, additionals }]);
+  const addProductToCart = (product, additionals) => {
+    setCart(c => [...c, { product: product._id, productName: product.name, variant: product.variant, productType: product.productType || 'burger', quantity: 1, unitPrice: product.salePrice, additionals }]);
+    showGoalToast(toast);
+  };
   const handleAdditionalsConfirm = (additionals) => { addProductToCart(additionalsModal, additionals); setAdditionalsModal(null); };
   const removeFromCart = (productId) => {
     const existing = cart.find(i => i.product === productId);
@@ -883,7 +912,23 @@ export default function PublicOrder() {
   );
 
   const css = `
-    .janz-hero { position: relative; height: 280px; overflow: hidden; }
+    .janz-topbar { display:flex; align-items:center; justify-content:space-between; padding:7px 16px; min-height:52px; background:#080808; border-bottom:1px solid rgba(255,255,255,0.06); gap:8px; position:sticky; top:0; z-index:100; backdrop-filter:blur(12px); box-sizing:border-box; }
+    .janz-topbar-logo { height:34px; object-fit:contain; opacity:0.95; flex-shrink:0; }
+    .janz-topbar-status { display:none; align-items:center; gap:7px; border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:6px 11px; font-size:0.71rem; white-space:nowrap; flex-shrink:1; min-width:0; overflow:hidden; }
+    .janz-topbar-sep { width:1px; height:13px; flex-shrink:0; background:rgba(255,255,255,0.12); }
+    .janz-topbar-days { display:none; }
+    .janz-topbar-actions { display:flex; gap:7px; align-items:center; flex-shrink:0; }
+    .janz-topbar-btn-pedir { background:#E8B84B; color:#000; border:none; padding:8px 14px; border-radius:8px; font-weight:800; cursor:pointer; font-size:0.78rem; white-space:nowrap; }
+    .janz-topbar-btn-prode { display:none; background:rgba(255,255,255,0.06); color:white; border:1px solid rgba(255,255,255,0.12); padding:8px 14px; border-radius:8px; font-weight:800; text-decoration:none; font-size:0.78rem; white-space:nowrap; }
+    @media (min-width: 480px) {
+      .janz-topbar-status { display:flex; }
+      .janz-topbar-btn-pedir { font-size:0.8rem; padding:8px 16px; }
+    }
+    @media (min-width: 640px) {
+      .janz-topbar-days { display:inline; }
+      .janz-topbar-btn-prode { display:inline-block; }
+    }
+    .janz-hero { position: relative; height: 300px; overflow: hidden; }
     .janz-hero-content { position: absolute; bottom: 20px; left: 20px; right: 20px; }
     .janz-menu-wrap { max-width: 560px; width: 100%; margin: 0 auto; padding: 0 0 140px; }
     .janz-desktop-layout { display: block; }
@@ -892,9 +937,9 @@ export default function PublicOrder() {
     .janz-product-card { display: flex; flex-direction: row; min-height: 110px; }
     .janz-product-img-wrap { width: 110px; flex-shrink: 0; overflow: hidden; position: relative; }
     .janz-product-img-wrap img { position: absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; }
-    .sticky-nav { position: sticky; top: 0; z-index: 50; background: rgba(8,8,8,0.97); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); padding: 10px 16px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; -ms-overflow-style: none; }
+    .sticky-nav { position: sticky; top: 52px; z-index: 50; background: rgba(8,8,8,0.97); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); padding: 10px 16px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; -ms-overflow-style: none; }
     .sticky-nav::-webkit-scrollbar { display: none; }
-    .nav-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; cursor: pointer; border: 1px solid rgba(255,255,255,0.1); margin-right: 8px; transition: all 0.2s; background: transparent; color: rgba(255,255,255,0.5); }
+    .nav-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; cursor: pointer; border: 1px solid rgba(255,255,255,0.1); margin-right: 8px; transition: all 0.2s; background: transparent; color: rgba(255,255,255,0.5); text-transform: uppercase; }
     .nav-pill.active { background: #E8B84B; color: #000; border-color: #E8B84B; }
     .slot-btn { padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 0.82rem; transition: all 0.2s; font-family: inherit; }
     .slot-btn:disabled { opacity: 0.35; cursor: not-allowed; }
@@ -904,8 +949,11 @@ export default function PublicOrder() {
     .deal-badge { animation: pulse 2s ease-in-out infinite; }
     .step-wrap { max-width: 480px; width: 100%; margin: 0 auto; padding: 28px 20px 140px; }
     @media (min-width: 900px) {
-      .janz-hero { height: 340px; }
-      .janz-hero-content { bottom: 36px; left: 48px; right: 48px; display: flex; align-items: flex-end; gap: 40px; }
+      .janz-topbar { padding: 10px 48px; min-height:62px; }
+      .janz-topbar-logo { height: 40px; }
+      .janz-hero { height: 420px; }
+      .janz-hero-content { bottom: 40px; left: 48px; right: 48px; display: flex; align-items: flex-end; gap: 40px; }
+      .sticky-nav { top: 62px; }
       .janz-menu-wrap { max-width: 1100px; padding: 0 24px 80px; }
       .janz-desktop-layout { display: grid; grid-template-columns: 1fr 300px; gap: 0; }
       .janz-menu-col { padding-right: 24px; }
@@ -928,10 +976,10 @@ export default function PublicOrder() {
   const hasAdds    = availableAdditionals.length > 0;
 
   const navItems = [
-    hasBurgers && { key: 'burgers', label: '🍔 Burgers' },
-    hasPapas   && { key: 'papas',   label: '🍟 Papas' },
-    hasOtros   && { key: 'otros',   label: '🍽️ Otros' },
-    hasAdds    && { key: 'adicionales', label: '➕ Adicionales' },
+    hasBurgers && { key: 'burgers',    label: '🍔 Burgers'     },
+    hasPapas   && { key: 'papas',      label: '🍟 Papas'       },
+    hasOtros   && { key: 'otros',      label: '🥤 Bebidas'      },
+    hasAdds    && { key: 'adicionales',label: '+ Extras'       },
   ].filter(Boolean);
 
   const ProductCard = ({ name, variants }) => {
@@ -946,8 +994,13 @@ export default function PublicOrder() {
         </div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
           <div style={{ padding: '12px 14px 4px' }}>
-            <div style={{ fontSize: '1.1rem', fontWeight: 900, color: GOLD, lineHeight: 1.2, letterSpacing: '-0.3px' }}>{name}</div>
-            {description && <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem', fontWeight: 500, marginTop: 4, lineHeight: 1.4 }}>{description}</div>}
+            <div style={{ fontSize: '1.05rem', fontWeight: 900, color: 'white', lineHeight: 1.2, letterSpacing: '-0.3px' }}>
+              {name}
+              {mundialMode && MUNDIAL_BADGES[name.toUpperCase()] && (
+                <MundialProductBadge label={MUNDIAL_BADGES[name.toUpperCase()]} />
+              )}
+            </div>
+            {description && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', fontWeight: 500, marginTop: 4, lineHeight: 1.4 }}>{description}</div>}
           </div>
           <div style={{ paddingBottom: 6 }}>
             {sorted.map((p, idx) => {
@@ -956,12 +1009,18 @@ export default function PublicOrder() {
               return (
                 <div key={p._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderTop: idx > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none', opacity: unavailable ? 0.4 : 1 }}>
                   <div>
-                    <div style={{ fontWeight: 700, color: 'white', fontSize: '0.85rem' }}>{p.variant}{unavailable && <span style={{ color: '#ef4444', fontSize: '0.6rem', marginLeft: 8 }}>NO DISPONIBLE</span>}</div>
-                    <div style={{ color: GOLD, fontWeight: 800, fontSize: '0.9rem', marginTop: 1 }}>{fmt(p.salePrice)}</div>
+                    <div style={{ fontWeight: 700, color: 'rgba(255,255,255,0.5)', fontSize: '0.78rem' }}>
+                      {sorted.length > 1 ? p.variant : ''}
+                      {unavailable && <span style={{ color: '#ef4444', fontSize: '0.6rem', marginLeft: 8 }}>NO DISPONIBLE</span>}
+                    </div>
+                    <div style={{ color: GOLD, fontWeight: 800, fontSize: '0.92rem', marginTop: 1 }}>
+                      {idx === 0 && sorted.length > 1 && <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 500, fontSize: '0.72rem', marginRight: 3 }}>Desde</span>}
+                      {fmt(p.salePrice)}
+                    </div>
                   </div>
                   {!unavailable && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {inCart ? (<><button onClick={() => removeFromCart(p._id)} style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.07)', border: 'none', color: 'white', fontSize: '1rem', cursor: 'pointer' }}>−</button><span style={{ fontWeight: 800, minWidth: 16, textAlign: 'center', color: 'white', fontSize: '0.9rem' }}>{inCart.quantity}</span><button onClick={() => handleAddToCart(p)} style={{ width: 30, height: 30, borderRadius: '50%', background: GOLD, border: 'none', color: '#000', fontSize: '1rem', cursor: 'pointer', fontWeight: 800 }}>+</button></>) : (<button onClick={() => handleAddToCart(p)} style={{ background: GOLD, color: '#000', border: 'none', padding: '7px 16px', borderRadius: 8, fontWeight: 800, cursor: 'pointer', fontSize: '0.82rem' }}>Agregar</button>)}
+                      {inCart ? (<><button onClick={() => removeFromCart(p._id)} style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.07)', border: 'none', color: 'white', fontSize: '1rem', cursor: 'pointer' }}>−</button><span style={{ fontWeight: 800, minWidth: 16, textAlign: 'center', color: 'white', fontSize: '0.9rem' }}>{inCart.quantity}</span><button onClick={() => handleAddToCart(p)} style={{ width: 30, height: 30, borderRadius: '50%', background: GOLD, border: 'none', color: '#000', fontSize: '1rem', cursor: 'pointer', fontWeight: 800 }}>+</button></>) : (<button onClick={() => handleAddToCart(p)} style={{ background: GOLD, color: '#000', border: 'none', padding: '7px 16px', borderRadius: 8, fontWeight: 800, cursor: 'pointer', fontSize: '0.82rem' }}>{mundialMode ? 'Agregar ⚽' : 'Agregar'}</button>)}
                     </div>
                   )}
                 </div>
@@ -1426,7 +1485,16 @@ export default function PublicOrder() {
   // ── Render menú ────────────────────────────────────────────────────────────
   return (
     <>
-      {showWelcome && (
+      {/* ── MUNDIAL: Animación de entrada (una sola vez) ─────────────── */}
+      {!mundialIntroSeen && mundialMode && (
+        <MundialIntroAnimation onDone={() => {
+          try { localStorage.setItem('janz_mundial_seen', '1'); } catch {}
+          setMundialIntroSeen(true);
+        }} />
+      )}
+
+      {/* ── Bienvenida normal (solo si el intro ya fue visto) ────────── */}
+      {showWelcome && mundialIntroSeen && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
           <div style={{ background: '#111', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '28px 24px 36px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ textAlign: 'center', marginBottom: 24 }}>
@@ -1453,39 +1521,106 @@ export default function PublicOrder() {
       <div style={{ minHeight: '100vh', background: '#080808', color: 'white', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
         <style>{css}</style>
 
-        <div className="janz-hero">
-          <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${heroBurger})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'brightness(0.3)' }} />
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(8,8,8,0.1) 0%, rgba(8,8,8,0.5) 50%, #080808 100%)' }} />
-          <div style={{ position: 'absolute', top: 18, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
-            <img src={logoJanz} alt="Janz" style={{ height: 56, objectFit: 'contain', opacity: 0.95 }} />
+        {/* ── MUNDIAL: Banner Argentina ganó ───────────────────────── */}
+        {argentinaGano && <ArgentinaGanoBar clientId={clientId} />}
+
+        {/* ── TOP BAR ───────────────────────────────────────────────── */}
+        <div className="janz-topbar">
+          <img src={logoJanz} alt="Janz" className="janz-topbar-logo" />
+
+          <div className="janz-topbar-status">
+            <span style={{ color: open ? '#22c55e' : '#ef4444', fontWeight: 700, flexShrink: 0 }}>
+              ● {open ? 'Abierto' : 'Cerrado'}
+            </span>
+            {schedule.days && schedule.days.length > 0 && (() => {
+              const DAY_NAMES = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+              const ORDER = [1,2,3,4,5,6,0];
+              const names = ORDER.filter(d => schedule.days.map(Number).includes(d)).map(d => DAY_NAMES[d]);
+              return (
+                <>
+                  <div className="janz-topbar-sep" />
+                  <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{names.join(' · ')}</span>
+                  <div className="janz-topbar-sep janz-topbar-days" />
+                  <span className="janz-topbar-days" style={{ color: 'rgba(255,255,255,0.22)' }}>Días de atención</span>
+                </>
+              );
+            })()}
           </div>
+
+          <div className="janz-topbar-actions">
+            {prodeEnabled && mundialMode && (
+              <a href={`/prode-publico${clientId ? `?clientId=${clientId}` : ''}`}
+                className="janz-topbar-btn-prode" style={{ display: 'inline-block' }}>
+                🏆 VER PRODE
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* ── HERO ──────────────────────────────────────────────────── */}
+        <div className="janz-hero">
+          {/* Imagen de fondo — más visible a la derecha en modo mundial */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            backgroundImage: `url(${heroImageUrl || heroBurger})`,
+            backgroundSize: 'cover',
+            backgroundPosition: mundialMode ? 'right center' : 'center',
+            filter: 'brightness(0.35)',
+          }} />
+          {/* Gradiente: en mundial, oscuro a la izquierda; normal, oscuro abajo */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: mundialMode
+              ? 'linear-gradient(to right, rgba(8,8,8,0.98) 0%, rgba(8,8,8,0.82) 45%, rgba(8,8,8,0.2) 100%)'
+              : 'linear-gradient(to bottom, rgba(8,8,8,0.1) 0%, rgba(8,8,8,0.5) 50%, #080808 100%)',
+          }} />
+
           <div className="janz-hero-content">
             <div>
-              <div style={{ fontSize: 'clamp(1.8rem, 7vw, 3.5rem)', fontWeight: 900, lineHeight: 1, letterSpacing: '-2px', color: 'white' }}>PEDÍ. DISFRUTÁ.<br /><span style={{ color: GOLD }}>REPETÍ.</span></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-                <a href="https://www.instagram.com/janz.burgers" target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'rgba(255,255,255,0.35)', textDecoration: 'none', fontSize: '0.75rem' }}><Instagram size={11} /> @janz.burgers</a>
-                <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.2)' }} />
-                <span style={{ fontSize: '0.75rem', color: open ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{open ? '● Abierto' : '● Cerrado'}</span>
-                {schedule.days && schedule.days.length > 0 && (() => {
-                  const DAY_NAMES = ['Domingos', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábados'];
-                  const ORDER = [1, 2, 3, 4, 5, 6, 0];
-                  const names = ORDER.filter(d => schedule.days.map(Number).includes(d)).map(d => DAY_NAMES[d]);
-                  return <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)' }}>● Dias de atencion: {names.join(', ')}</span>;
-                })()}
-              </div>
+              {mundialMode && <MundialHeroBadge />}
+              {mundialMode ? (
+                <div style={{ fontSize: 'clamp(1.8rem, 6.5vw, 3.6rem)', fontWeight: 900, lineHeight: 0.93, letterSpacing: '-2.5px', color: 'white' }}>
+                  EL MUNDIAL<br />SE DISFRUTA<br /><span style={{ color: GOLD }}>CON JANZ.</span>
+                </div>
+              ) : (
+                <div style={{ fontSize: 'clamp(1.8rem, 7vw, 3.5rem)', fontWeight: 900, lineHeight: 1, letterSpacing: '-2px', color: 'white' }}>
+                  PEDÍ. DISFRUTÁ.<br /><span style={{ color: GOLD }}>REPETÍ.</span>
+                </div>
+              )}
+              {mundialMode ? (
+                <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', marginTop: 10, lineHeight: 1.5, maxWidth: 340 }}>
+                  Pedí tus burgers y sumá puntos para participar del PRODE JANZ.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+                  <a href="https://www.instagram.com/janz.burgers" target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'rgba(255,255,255,0.35)', textDecoration: 'none', fontSize: '0.75rem' }}><Instagram size={11} /> @janz.burgers</a>
+                </div>
+              )}
+              {mundialMode && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => { const el = document.querySelector('[data-section="burgers"]') || document.querySelector('.janz-menu-wrap'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }}
+                    style={{ background: GOLD, color: '#000', border: 'none', padding: '10px 20px', borderRadius: 8, fontWeight: 800, cursor: 'pointer', fontSize: '0.85rem', letterSpacing: '-0.2px' }}>
+                    🍔 PEDIR AHORA
+                  </button>
+                  {prodeEnabled && (
+                    <a href={`/prode-publico${clientId ? `?clientId=${clientId}` : ''}`}
+                      style={{ background: 'rgba(255,255,255,0.08)', color: 'white', border: '1px solid rgba(255,255,255,0.15)', padding: '10px 20px', borderRadius: 8, fontWeight: 800, textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '-0.2px', display: 'inline-block' }}>
+                      🏆 VER PRODE
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {prodeEnabled && (
-          <div style={{ padding: '10px 16px 0' }}>
-            <div style={{ background: 'rgba(232,184,75,0.06)', border: '1px solid rgba(232,184,75,0.2)', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 34, height: 34, background: 'rgba(232,184,75,0.12)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🏆</div>
-                <div><div style={{ fontSize: 12, fontWeight: 700, color: GOLD, lineHeight: 1 }}>Prode Mundial 2026</div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>Pronosticá y ganá premios</div></div>
-              </div>
-              <a href={`/prode-publico${clientId ? `?clientId=${clientId}` : ''}`} style={{ background: GOLD, color: '#000', borderRadius: 8, padding: '7px 12px', fontSize: 11, fontWeight: 800, textDecoration: 'none', whiteSpace: 'nowrap', flexShrink: 0 }}>Jugar →</a>
-            </div>
+        {mundialMode && (
+          <div style={{ padding: '12px 0 0' }}>
+            <MundialCountdownCard
+              match={nextMatch || { opponent: 'próximo rival', date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(), label: 'Mundial 2026' }}
+              promoUrl={prodeEnabled ? `/prode-publico${clientId ? `?clientId=${clientId}` : ''}` : null}
+            />
           </div>
         )}
 
@@ -1613,7 +1748,16 @@ export default function PublicOrder() {
           );
         })()}
 
-        {!open && <div style={{ margin: '10px 16px 0', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '10px 14px', color: '#ef4444', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem' }}>🔴 En este momento no estamos tomando pedidos</div>}
+        {!open && (
+          <div style={{ margin: '10px 16px 0', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '10px 14px', color: '#ef4444', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem' }}>
+            🔴 {todayOverride?.status === 'closed' && todayOverride.message ? todayOverride.message : 'En este momento no estamos tomando pedidos'}
+          </div>
+        )}
+        {open && todayOverride?.status === 'open' && todayOverride.message && (
+          <div style={{ margin: '10px 16px 0', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 10, padding: '10px 14px', color: '#22c55e', textAlign: 'center', fontWeight: 700, fontSize: '0.85rem' }}>
+            🟢 {todayOverride.message}
+          </div>
+        )}
 
         {showPushBanner && !pushGranted && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 24 }}>

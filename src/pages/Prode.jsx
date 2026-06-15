@@ -51,21 +51,11 @@ export default function Prode() {
   // ── Participantes ─────────────────────────────────────────────────────────────
   const [participantes,   setParticipantes  ] = useState([]);
   const [partsLoading,    setPartsLoading   ] = useState(false);
+  const [premios,         setPremios        ] = useState(null);
+  const [premiosLoading,  setPremiosLoading ] = useState(false);
   const [expandedPart,    setExpandedPart   ] = useState(null);      // clientId expandido
   const [partPreds,       setPartPreds      ] = useState({});         // { clientId: { loading, data } }
   const [partFilter,      setPartFilter     ] = useState('all');      // 'all' | 'ok' | 'nok'
-
-  // ── Test states ─────────────────────────────────────────────────────────────
-  const [testEstado,       setTestEstado      ] = useState(null);
-  const [testLoadingEstado,setTestLoadingEstado] = useState(false);
-  const [simPartido,       setSimPartido      ] = useState({ matchId: '', homeScore: '', awayScore: '' });
-  const [simResult,        setSimResult       ] = useState(null);
-  const [simLoading,       setSimLoading      ] = useState(false);
-  const [simCompra,        setSimCompra       ] = useState({ clientId: '', total: '5000' });
-  const [simCompraResult,  setSimCompraResult ] = useState(null);
-  const [simCompraLoading, setSimCompraLoading] = useState(false);
-  const [cleanResult,      setCleanResult     ] = useState(null);
-  const [cleanLoading,     setCleanLoading    ] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -137,11 +127,19 @@ export default function Prode() {
     } catch { toast.error('Error guardando configuración'); }
   };
 
+  const handleConfirmTeams = async (matchId, homeTeam, awayTeam) => {
+    try {
+      await API.put(`/prode/fixture/${matchId}/teams`, { homeTeam, awayTeam });
+      setFixture(f => f.map(m => m._id === matchId ? { ...m, homeTeam, awayTeam, teamsConfirmed: true } : m));
+      toast.success(`✅ ${homeTeam} vs ${awayTeam} — pronósticos habilitados`);
+    } catch { toast.error('Error al confirmar equipos'); }
+  };
+
   const handleSetResultado = async (matchId, homeScore, awayScore) => {
     try {
       await API.put(`/prode/fixture/${matchId}/resultado`, { homeScore: Number(homeScore), awayScore: Number(awayScore) });
-      toast.success('Resultado cargado y pronósticos evaluados');
-      load();
+      setFixture(f => f.map(m => m._id === matchId ? { ...m, homeScore, awayScore, status: 'finished' } : m));
+      toast.success('Resultado cargado');
     } catch { toast.error('Error cargando resultado'); }
   };
 
@@ -184,8 +182,16 @@ export default function Prode() {
     finally { setPredsLoading(false); }
   };
 
+  const loadPremios = async () => {
+    setPremiosLoading(true);
+    try {
+      const r = await API.get('/prode/premios');
+      setPremios(r.data);
+    } catch { toast.error('Error cargando premios'); }
+    finally { setPremiosLoading(false); }
+  };
+
   const loadParticipantes = async () => {
-    setPartsLoading(true);
     try {
       const r = await API.get('/prode/participantes');
       setParticipantes(r.data);
@@ -204,6 +210,21 @@ export default function Prode() {
     } catch {
       toast.error('Error cargando predicciones del participante');
       setPartPreds(prev => ({ ...prev, [clientId]: { loading: false, data: [] } }));
+    }
+  };
+
+  const handleEliminarParticipante = async (clientId, nombre) => {
+    if (!window.confirm(`¿Eliminar a ${nombre} del prode?\n\nSe borrarán sus pronósticos, puntos y cupón prode. El cliente seguirá existiendo en el sistema (historial de pedidos intacto).`)) return;
+    try {
+      const r = await API.delete(`/prode/participante/${clientId}`);
+      toast.success(`${nombre} eliminado del prode (${r.data.pronosticosEliminados} pronósticos, ${r.data.puntosEliminados} pts${r.data.cuponEliminado ? ', cupón borrado' : ''})`);
+      setParticipantes(prev => prev.filter(p => String(p.clientId) !== String(clientId)));
+      setExpandedPart(null);
+      // Refrescar ranking
+      const rankRes = await API.get('/prode/ranking');
+      setRanking(rankRes.data);
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Error al eliminar participante');
     }
   };
 
@@ -363,7 +384,7 @@ export default function Prode() {
             )}
             {config.enabled && (
               <span style={{ color: 'var(--gray)', fontSize: 13 }}>
-                · {config.pointsWinner} pt ganador · +{config.pointsExact} pts resultado exacto · {config.pointsPerOrder} pt por compra
+                · {config.pointsWinner ?? 3} pt ganador · {(config.pointsWinner ?? 3) + (config.pointsExact ?? 3)} pt exacto · bonus categoría +3/+3
               </span>
             )}
           </div>
@@ -376,9 +397,9 @@ export default function Prode() {
             { id: 'fixture',       label: '📅 Fixture'    },
             { id: 'predicciones',  label: '👁 Predicciones' },
             { id: 'participantes', label: '👥 Participantes' },
-            { id: 'bonificaciones',label: '🎁 Bonificaciones' },
+            { id: 'premios',       label: '🎁 Premios'       },
+            { id: 'bonificaciones',label: '🎁 Bonif. (legacy)' },
             { id: 'terminos',      label: '📋 Términos & Premios' },
-            { id: 'testing',       label: '🧪 Testing'    },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               background: 'none', border: 'none', cursor: 'pointer',
@@ -403,7 +424,7 @@ export default function Prode() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
                   <tr style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
-                    {['#', 'Cliente', 'Pts Prode', 'Pts Compras', 'Total', 'Pedidos'].map(h => (
+                    {['#', 'Cliente', 'Pts Pronóst.', 'Pts Bonus', 'Total', 'Categoría', 'Entregas'].map(h => (
                       <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: 'var(--gray)', fontWeight: 500, fontSize: 12 }}>{h}</th>
                     ))}
                   </tr>
@@ -422,7 +443,7 @@ export default function Prode() {
                       </td>
                       <td style={{ padding: '12px 14px' }}>
                         <span style={{ background: '#14532d', color: '#86efac', fontSize: 12, padding: '3px 10px', borderRadius: 99 }}>
-                          {r.puntosCompras} pts
+                          {r.puntosBonus ?? r.puntosCompras ?? 0} pts
                         </span>
                       </td>
                       <td style={{ padding: '12px 14px' }}>
@@ -430,7 +451,12 @@ export default function Prode() {
                           {r.totalPuntos} pts
                         </span>
                       </td>
-                      <td style={{ padding: '12px 14px', color: 'var(--gray)', fontSize: 13 }}>{r.pedidosEnPeriodo}</td>
+                      <td style={{ padding: '12px 14px', fontSize: 13 }}>
+                        <span style={{ background: 'rgba(232,184,75,0.12)', color: '#E8B84B', fontSize: 12, padding: '3px 10px', borderRadius: 99 }}>
+                          {r.categoriaLabel || r.categoria || '—'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 14px', color: 'var(--gray)', fontSize: 13 }}>{r.entregasEnPeriodo ?? r.pedidosEnPeriodo ?? 0}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -468,7 +494,7 @@ export default function Prode() {
                     <h3 style={{ fontSize: 13, color: 'var(--gray)', fontWeight: 600, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>{grupo}</h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {matches.map(m => (
-                        <MatchRow key={m._id} match={m} onSetResultado={handleSetResultado} statusBadge={statusBadge} />
+                        <MatchRow key={m._id} match={m} onSetResultado={handleSetResultado} onConfirmTeams={handleConfirmTeams} statusBadge={statusBadge} />
                       ))}
                     </div>
                   </div>
@@ -480,37 +506,22 @@ export default function Prode() {
 
         {/* TAB: Participantes */}
         {tab === 'participantes' && (() => {
-          const minPedidos = cfgForm.condicionMinPedidos ?? 0;
           const filtered = participantes.filter(p =>
-            partFilter === 'ok'  ? p.pedidosEnPeriodo >= minPedidos :
-            partFilter === 'nok' ? p.pedidosEnPeriodo <  minPedidos : true
+            partFilter === 'ok'  ? p.elegibleTop3 :
+            partFilter === 'nok' ? !p.elegibleTop3 : true
           );
           const totalParts = participantes.length;
-          const elegibles  = participantes.filter(p => p.pedidosEnPeriodo >= minPedidos).length;
+          const elegibles  = participantes.filter(p => p.elegibleTop3).length;
 
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-              {/* ── Condición de premio ────────────────────────────────────── */}
+              {/* ── Segmentos de premio ────────────────────────────────────── */}
               <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 18 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  🏅 Condición para reclamar premio
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 14 }}>
-                  Los participantes que no cumplan esta condición quedarán marcados como "No elegibles" aunque tengan puntos.
-                </div>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 13, color: 'var(--text)' }}>Mínimo</span>
-                  <input
-                    type="number" min={0} max={99}
-                    value={minPedidos}
-                    onChange={e => setCfgForm(p => ({ ...p, condicionMinPedidos: Number(e.target.value) }))}
-                    style={{ width: 64, textAlign: 'center' }}
-                  />
-                  <span style={{ fontSize: 13, color: 'var(--text)' }}>compra{minPedidos !== 1 ? 's' : ''} durante el Mundial</span>
-                  <button className="btn btn-primary" onClick={handleSaveConfig} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13 }}>
-                    <CheckCircle size={13} /> Guardar condición
-                  </button>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>🏅 Segmentos de premio</div>
+                <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.6 }}>
+                  <b>Invitados</b> → cupón {config?.guestCouponPercent || 20}% · <b>Clientes sin entregas en el período</b> → combo doble ·
+                  <b> ≥1 entrega en el período</b> → compite por top 3 del ranking.
                 </div>
               </div>
 
@@ -525,8 +536,8 @@ export default function Prode() {
                   <>
                     {[
                       { label: 'Total participantes', value: totalParts,              color: '#E8B84B' },
-                      { label: 'Elegibles',            value: elegibles,              color: '#34d399' },
-                      { label: 'No elegibles',         value: totalParts - elegibles, color: '#f87171' },
+                      { label: 'Competidores top 3', value: elegibles,              color: '#34d399' },
+                      { label: 'Sin entregas en período', value: totalParts - elegibles, color: '#f87171' },
                     ].map(({ label, value, color }) => (
                       <div key={label} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 16px', textAlign: 'center', minWidth: 110 }}>
                         <div style={{ fontSize: 22, fontWeight: 700, color }}>{value}</div>
@@ -547,8 +558,8 @@ export default function Prode() {
                   <div style={{ display: 'flex', gap: 6 }}>
                     {[
                       { id: 'all', label: 'Todos' },
-                      { id: 'ok',  label: '✅ Elegibles' },
-                      { id: 'nok', label: '❌ No elegibles' },
+                      { id: 'ok',  label: '✅ Top 3 pool' },
+                      { id: 'nok', label: '❌ Sin entregas' },
                     ].map(f => (
                       <button key={f.id} onClick={() => setPartFilter(f.id)}
                         style={{ background: partFilter === f.id ? 'var(--gold)' : 'var(--card)', color: partFilter === f.id ? '#000' : 'var(--gray)', border: '1px solid var(--border)', borderRadius: 99, padding: '5px 14px', fontSize: 12, cursor: 'pointer', fontWeight: partFilter === f.id ? 600 : 400 }}>
@@ -566,16 +577,17 @@ export default function Prode() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead>
                           <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
-                            {['#', 'Nombre', 'WhatsApp', 'Puntos', 'Pronósticos', 'Compras', 'Elegible', ''].map(h => (
+                            {['#', 'Nombre', 'WhatsApp', 'Puntos', 'Categoría', 'Entregas', 'Premio', ''].map(h => (
                               <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: 'var(--gray)', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {filtered.map((p, i) => {
-                            const elegible  = p.pedidosEnPeriodo >= minPedidos;
+                            const elegible  = p.elegibleTop3;
                             const isExpanded = expandedPart === String(p.clientId);
                             const preds     = partPreds[String(p.clientId)];
+                            const premioLabel = p.premioSegmento === 'competidor' ? 'Top 3' : p.premioSegmento === 'cliente' ? 'Combo' : 'Cupón';
                             return (
                               <>
                                 <tr key={p.clientId}
@@ -592,43 +604,44 @@ export default function Prode() {
                                   <td style={{ padding: '11px 12px' }}>
                                     <span style={{ fontWeight: 700, color: 'var(--gold)' }}>{p.puntos}</span>
                                     <span style={{ fontSize: 11, color: 'var(--gray)', marginLeft: 4 }}>
-                                      ({p.puntosPronostico}p + {p.puntosCompra}c)
+                                      ({p.puntosPronostico}p + {p.puntosBonus ?? p.puntosCompra ?? 0}b)
                                     </span>
                                   </td>
-                                  <td style={{ padding: '11px 12px', color: 'var(--text)' }}>
-                                    <span style={{ fontWeight: 500 }}>{p.pronosticos.total}</span>
-                                    <span style={{ fontSize: 11, color: 'var(--gray)', marginLeft: 4 }}>
-                                      ({p.pronosticos.acertados}✓ {p.pronosticos.exactos}⭐)
+                                  <td style={{ padding: '11px 12px' }}>
+                                    <span style={{ background: 'rgba(232,184,75,0.12)', color: '#E8B84B', fontSize: 12, padding: '3px 10px', borderRadius: 99 }}>
+                                      {p.categoria || 'Invitado'}
                                     </span>
+                                  </td>
+                                  <td style={{ padding: '11px 12px', fontWeight: 600, color: elegible ? '#34d399' : 'var(--text)' }}>
+                                    {p.entregasEnPeriodo ?? p.pedidosEnPeriodo ?? 0}
                                   </td>
                                   <td style={{ padding: '11px 12px' }}>
                                     <span style={{
-                                      fontWeight: 700,
-                                      color: minPedidos > 0
-                                        ? (p.pedidosEnPeriodo >= minPedidos ? '#34d399' : '#f87171')
-                                        : 'var(--text)',
+                                      background: p.premioSegmento === 'competidor' ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.06)',
+                                      color: p.premioSegmento === 'competidor' ? '#34d399' : 'var(--gray)',
+                                      fontSize: 12, padding: '3px 10px', borderRadius: 99, fontWeight: 600,
                                     }}>
-                                      {p.pedidosEnPeriodo}
+                                      {premioLabel}
                                     </span>
-                                    {minPedidos > 0 && (
-                                      <span style={{ fontSize: 11, color: 'var(--gray)', marginLeft: 4 }}>
-                                        / {minPedidos} min
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td style={{ padding: '11px 12px' }}>
-                                    {minPedidos === 0 ? (
-                                      <span style={{ fontSize: 11, color: 'var(--gray)' }}>Sin condición</span>
-                                    ) : elegible ? (
-                                      <span style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399', fontSize: 12, padding: '3px 10px', borderRadius: 99, fontWeight: 600 }}>✅ Elegible</span>
-                                    ) : (
-                                      <span style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontSize: 12, padding: '3px 10px', borderRadius: 99, fontWeight: 600 }}>❌ No cumple</span>
+                                    {p.cuponInvitado && (
+                                      <div style={{ fontSize: 10, color: 'var(--gray)', marginTop: 4 }}>{p.cuponInvitado}</div>
                                     )}
                                   </td>
                                   <td style={{ padding: '11px 12px', textAlign: 'right' }}>
-                                    <span style={{ color: isExpanded ? 'var(--gold)' : 'var(--gray)', fontSize: 16 }}>
-                                      {isExpanded ? '▲' : '▼'}
-                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                                      <button
+                                        onClick={e => { e.stopPropagation(); handleEliminarParticipante(String(p.clientId), p.nombre); }}
+                                        title="Eliminar del prode"
+                                        style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', opacity: 0.5, padding: 4, display: 'flex', alignItems: 'center' }}
+                                        onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                                        onMouseLeave={e => e.currentTarget.style.opacity = 0.5}
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                      <span style={{ color: isExpanded ? 'var(--gold)' : 'var(--gray)', fontSize: 16 }}>
+                                        {isExpanded ? '▲' : '▼'}
+                                      </span>
+                                    </div>
                                   </td>
                                 </tr>
 
@@ -717,6 +730,56 @@ export default function Prode() {
         })()}
 
         {/* TAB: Bonificaciones */}
+        {tab === 'premios' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {!premios ? (
+              <button className="btn btn-primary" disabled={premiosLoading} onClick={loadPremios}>
+                {premiosLoading ? 'Cargando...' : '🎁 Cargar segmentos de premio'}
+              </button>
+            ) : (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button className="btn btn-secondary" onClick={loadPremios} disabled={premiosLoading}>
+                    <RefreshCw size={12} /> Actualizar
+                  </button>
+                </div>
+                {[
+                  { key: 'invitados', title: `🎟️ Invitados (cupón ${config?.guestCouponPercent || 20}%)`, desc: premios.cfg?.prizeInvitado },
+                  { key: 'clientes',  title: '🍔 Clientes sin entregas en el período', desc: premios.cfg?.prizeCliente },
+                  { key: 'top3',      title: '🏆 Top 3 competidores (≥1 entrega)', desc: 'Ranking filtrado' },
+                ].map(({ key, title, desc }) => (
+                  <div key={key} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>{title}</div>
+                    {desc && <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 12 }}>{desc}</div>}
+                    {(premios[key] || []).length === 0 ? (
+                      <div style={{ color: 'var(--gray)', fontSize: 13 }}>Ningún participante en este segmento.</div>
+                    ) : (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr>
+                            {['Nombre', key === 'top3' ? 'Pos.' : 'Pts', key === 'invitados' ? 'Cupón' : 'Premio'].map(h => (
+                              <th key={h} style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--gray)', fontSize: 11 }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(premios[key] || []).map((row, i) => (
+                            <tr key={row.clientId || i} style={{ borderTop: '1px solid var(--border)' }}>
+                              <td style={{ padding: '8px 10px' }}>{row.nombre}</td>
+                              <td style={{ padding: '8px 10px' }}>{key === 'top3' ? `#${row.posicion}` : row.totalPuntos}</td>
+                              <td style={{ padding: '8px 10px', color: 'var(--gray)' }}>{row.cuponInvitado || row.premio || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+
         {tab === 'bonificaciones' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -958,9 +1021,11 @@ export default function Prode() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {[
-                  { key: 'prize1', label: '🥇 1° Puesto', placeholder: 'ej: 1 mes de Janz gratis (1 combo doble/semana × 4 semanas) + mini pelota oficial' },
-                  { key: 'prize2', label: '🥈 2° Puesto', placeholder: 'ej: Mini pelota oficial + 1 combo doble a elección' },
-                  { key: 'prize3', label: '🥉 3° Puesto', placeholder: 'ej: 1 combo doble a elección' },
+                  { key: 'prizeInvitado', label: '🎟️ Premio invitados', placeholder: 'Cupón 20% en tu primera compra' },
+                  { key: 'prizeCliente',  label: '🍔 Premio clientes (sin compras en el Mundial)', placeholder: 'Combo doble a elección' },
+                  { key: 'prize1', label: '🥇 1° Puesto (competidores)', placeholder: 'Premio mayor a definir' },
+                  { key: 'prize2', label: '🥈 2° Puesto', placeholder: 'Premio medio a definir' },
+                  { key: 'prize3', label: '🥉 3° Puesto', placeholder: 'Premio menor a definir' },
                 ].map(({ key, label, placeholder }) => (
                   <div key={key}>
                     <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 5 }}>{label}</label>
@@ -979,18 +1044,12 @@ export default function Prode() {
             {/* Términos */}
             <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <FileText size={15} color="var(--gold)" /> Condición de Oro
+                <FileText size={15} color="var(--gold)" /> Reglas del ranking
               </h3>
-              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 12 }}>
-                Requisito para ser elegible a los premios (ej: "al menos 3 compras durante el torneo").
+              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 12, lineHeight: 1.6 }}>
+                Ranking = pronósticos + bonus de categoría (máx. 6 pts). Las compras cuentan al <b>entregar</b> el pedido.
+                Bonus +3 al pasar a Cliente (invitado, 1.ª entrega) y +3 al llegar a VIP (2 entregas en el período).
               </div>
-              <input
-                type="text"
-                value={cfgForm.condicionOro || ''}
-                onChange={e => setCfgForm(p => ({ ...p, condicionOro: e.target.value }))}
-                placeholder="ej: haber realizado al menos 3 compras durante el torneo"
-                style={{ width: '100%', marginBottom: 20 }}
-              />
 
               <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <FileText size={15} color="var(--gold)" /> Términos personalizados
@@ -1012,344 +1071,6 @@ export default function Prode() {
                 <CheckCircle size={15} /> Guardar términos y premios
               </button>
             </div>
-          </div>
-        )}
-
-        {/* TAB: Testing */}
-        {tab === 'testing' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-            {/* ── Reset de datos de prueba ─────────────────────────────────── */}
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-              <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16 }}>🧹</span>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>Limpiar datos de prueba</span>
-              </div>
-              <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-                {/* Por cliente */}
-                <div>
-                  <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8, fontWeight: 500 }}>Borrar predicciones de un cliente específico</div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <select
-                      value={resetClientId}
-                      onChange={e => setResetClientId(e.target.value)}
-                      style={{ flex: 1, minWidth: 180 }}
-                    >
-                      <option value="">— Seleccioná un cliente —</option>
-                      {ranking.map(r => (
-                        <option key={r.clientId} value={r.clientId}>
-                          {r.nombre} — {r.puntos} pts ({r.pronosticos} pronósticos)
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      className="btn btn-secondary"
-                      disabled={!resetClientId || resetLoading}
-                      onClick={handleResetCliente}
-                      style={{ whiteSpace: 'nowrap', color: resetClientId ? '#ef4444' : undefined, borderColor: resetClientId ? 'rgba(239,68,68,0.3)' : undefined }}
-                    >
-                      {resetLoading ? 'Borrando...' : '🗑 Borrar predicciones'}
-                    </button>
-                  </div>
-                  {ranking.length === 0 && (
-                    <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 6, fontStyle: 'italic' }}>No hay participantes aún en el ranking.</div>
-                  )}
-                </div>
-
-                <div style={{ height: 1, background: 'var(--border)' }} />
-
-                {/* Nuclear */}
-                <div>
-                  <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8, fontWeight: 500 }}>Reset nuclear — borrar TODOS los pronósticos y puntos</div>
-                  {!confirmNuclear ? (
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => setConfirmNuclear(true)}
-                      style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', gap: 6 }}
-                    >
-                      💥 Reset completo del prode
-                    </button>
-                  ) : (
-                    <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, padding: '14px 16px' }}>
-                      <div style={{ fontSize: 13, color: '#fca5a5', marginBottom: 12, fontWeight: 500 }}>
-                        ⚠️ Esto borra <b>todos</b> los pronósticos y puntos del prode (no los partidos ni el fixture). ¿Estás seguro?
-                      </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button
-                          className="btn"
-                          disabled={nuclearLoading}
-                          onClick={handleNuclearReset}
-                          style={{ background: '#7f1d1d', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
-                        >
-                          {nuclearLoading ? 'Borrando todo...' : 'Sí, borrar todo'}
-                        </button>
-                        <button className="btn btn-secondary" onClick={() => setConfirmNuclear(false)}>
-                          Cancelar
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Banner advertencia */}
-            <div style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13 }}>
-              <span style={{ fontSize: 18 }}>⚠️</span>
-              <div>
-                <div style={{ fontWeight: 600, color: '#fbbf24', marginBottom: 2 }}>Modo testing — solo visible en desarrollo</div>
-                <div style={{ color: 'var(--gray)' }}>Estas herramientas simulan eventos reales sin afectar pedidos. Desactivadas automáticamente en producción (<code>NODE_ENV=production</code>).</div>
-              </div>
-            </div>
-
-            {/* 1. Estado del prode */}
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>📊 Estado del prode</div>
-                  <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 2 }}>Resumen completo: config, fixture, pronósticos, ranking.</div>
-                </div>
-                <button className="btn btn-secondary"
-                  disabled={testLoadingEstado}
-                  onClick={async () => {
-                    setTestLoadingEstado(true);
-                    try {
-                      const r = await API.get('/prode-test/estado');
-                      setTestEstado(r.data);
-                    } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
-                    finally { setTestLoadingEstado(false); }
-                  }}>
-                  {testLoadingEstado ? 'Cargando...' : '🔍 Ver estado'}
-                </button>
-              </div>
-              {testEstado && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
-                    {[
-                      { label: 'Enabled', val: testEstado.config.enabled ? '✅' : '❌' },
-                      { label: 'Partidos', val: testEstado.fixture.total },
-                      { label: 'Pronósticos', val: testEstado.pronosticos },
-                      { label: 'Participantes', val: testEstado.rankingParticipantes },
-                    ].map(({ label, val }) => (
-                      <div key={label} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
-                        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--gold)' }}>{val}</div>
-                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{label}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--gray)' }}>
-                    {Object.entries(testEstado.fixture.porEstado || {}).map(([k, v]) => (
-                      <span key={k} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 99, padding: '3px 10px' }}>
-                        {k}: {v}
-                      </span>
-                    ))}
-                  </div>
-                  {testEstado.ranking.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>Top ranking actual:</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {testEstado.ranking.map(r => (
-                          <div key={r.pos} style={{ display: 'flex', gap: 10, fontSize: 13, padding: '6px 10px', background: 'var(--bg)', borderRadius: 6 }}>
-                            <span style={{ color: 'var(--gray)', minWidth: 20 }}>{r.pos}°</span>
-                            <span style={{ flex: 1 }}>{r.nombre}</span>
-                            <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{r.total} pts</span>
-                            <span style={{ color: 'var(--gray)', fontSize: 11 }}>({r.pronos} pronos + {r.compras} compras)</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* 2. Simular resultado */}
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>⚽ Simular resultado de partido</div>
-              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 14 }}>Marca un partido como terminado y evalúa pronósticos automáticamente.</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, marginBottom: 12 }}>
-                <div>
-                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Partido (seleccioná del fixture)</label>
-                  <select
-                    value={simPartido.matchId}
-                    onChange={e => setSimPartido(p => ({ ...p, matchId: e.target.value }))}
-                    style={{ width: '100%' }}>
-                    <option value="">— Seleccioná un partido —</option>
-                    {fixture.filter(m => m.status === 'scheduled').map(m => (
-                      <option key={m._id} value={m._id}>
-                        {m.homeTeam} vs {m.awayTeam} · {new Date(m.matchDate).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 8, alignItems: 'center' }}>
-                  <div>
-                    <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>
-                      {simPartido.matchId ? fixture.find(m => m._id === simPartido.matchId)?.homeTeam || 'Local' : 'Local'}
-                    </label>
-                    <input type="number" min={0} max={20} placeholder="0"
-                      value={simPartido.homeScore}
-                      onChange={e => setSimPartido(p => ({ ...p, homeScore: e.target.value }))}
-                      style={{ textAlign: 'center', fontSize: 18 }} />
-                  </div>
-                  <div style={{ color: 'var(--gray)', fontSize: 20, fontWeight: 700, paddingTop: 22 }}>–</div>
-                  <div>
-                    <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>
-                      {simPartido.matchId ? fixture.find(m => m._id === simPartido.matchId)?.awayTeam || 'Visitante' : 'Visitante'}
-                    </label>
-                    <input type="number" min={0} max={20} placeholder="0"
-                      value={simPartido.awayScore}
-                      onChange={e => setSimPartido(p => ({ ...p, awayScore: e.target.value }))}
-                      style={{ textAlign: 'center', fontSize: 18 }} />
-                  </div>
-                </div>
-              </div>
-              <button className="btn btn-primary"
-                disabled={simLoading || !simPartido.matchId || simPartido.homeScore === '' || simPartido.awayScore === ''}
-                onClick={async () => {
-                  setSimLoading(true); setSimResult(null);
-                  try {
-                    const r = await API.post('/prode-test/simular-resultado', {
-                      matchId: simPartido.matchId,
-                      homeScore: Number(simPartido.homeScore),
-                      awayScore: Number(simPartido.awayScore),
-                    });
-                    setSimResult(r.data);
-                    load();
-                    toast.success('Resultado simulado y pronósticos evaluados');
-                  } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
-                  finally { setSimLoading(false); }
-                }}>
-                {simLoading ? 'Simulando...' : '▶ Simular resultado'}
-              </button>
-              {simResult && (
-                <div style={{ marginTop: 14, background: 'rgba(52,211,153,0.06)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: 8, padding: 14, fontSize: 13 }}>
-                  <div style={{ fontWeight: 700, color: '#34d399', marginBottom: 8 }}>✅ {simResult.partido}</div>
-                  <div style={{ color: 'var(--gray)', marginBottom: 8 }}>
-                    Pronósticos evaluados: <b style={{ color: 'var(--text)' }}>{simResult.pronosticosEvaluados}</b> ·
-                    Acertaron: <b style={{ color: '#34d399' }}>{simResult.acertaron}</b>
-                  </div>
-                  {simResult.detalle?.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
-                      {simResult.detalle.map((d, i) => (
-                        <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12, padding: '4px 8px', background: 'var(--bg)', borderRadius: 5 }}>
-                          <span style={{ color: d.puntos > 0 ? '#34d399' : '#ef4444', fontWeight: 700, minWidth: 50 }}>
-                            {d.puntos > 0 ? `+${d.puntos} pts` : '0 pts'}
-                          </span>
-                          <span style={{ color: 'var(--gray)' }}>{d.predictedWinner} {d.predictedScore ? `· ${d.predictedScore}` : ''}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <button onClick={() => { setSimPartido({ matchId: '', homeScore: '', awayScore: '' }); setSimResult(null); }}
-                    style={{ marginTop: 10, background: 'none', border: '1px solid var(--border)', color: 'var(--gray)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
-                    Nueva simulación
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* 3. Simular compra */}
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>🍔 Simular puntos por compra</div>
-              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 14 }}>Asigna puntos de compra a un cliente usando el mismo sistema que las órdenes reales (incluye bonificaciones).</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-                <div>
-                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Cliente (del ranking)</label>
-                  <select
-                    value={simCompra.clientId}
-                    onChange={e => setSimCompra(p => ({ ...p, clientId: e.target.value }))}
-                    style={{ width: '100%' }}>
-                    <option value="">— Seleccioná cliente —</option>
-                    {ranking.map(r => (
-                      <option key={r.clientId} value={r.clientId}>{r.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Total del pedido ($)</label>
-                  <input type="number" min={0} placeholder="5000"
-                    value={simCompra.total}
-                    onChange={e => setSimCompra(p => ({ ...p, total: e.target.value }))} />
-                </div>
-              </div>
-              <button className="btn btn-primary"
-                disabled={simCompraLoading || !simCompra.clientId || !simCompra.total}
-                onClick={async () => {
-                  setSimCompraLoading(true); setSimCompraResult(null);
-                  try {
-                    const r = await API.post('/prode-test/simular-compra', {
-                      clientId: simCompra.clientId,
-                      total: Number(simCompra.total),
-                    });
-                    setSimCompraResult(r.data);
-                    load();
-                    toast.success(`+${r.data.puntosAsignados} puntos asignados`);
-                  } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
-                  finally { setSimCompraLoading(false); }
-                }}>
-                {simCompraLoading ? 'Simulando...' : '▶ Simular compra'}
-              </button>
-              {simCompraResult && (
-                <div style={{ marginTop: 14, background: 'rgba(232,184,75,0.06)', border: '1px solid rgba(232,184,75,0.2)', borderRadius: 8, padding: 14, fontSize: 13 }}>
-                  <div style={{ fontWeight: 700, color: 'var(--gold)', marginBottom: 6 }}>+{simCompraResult.puntosAsignados} pts asignados</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {simCompraResult.detalles?.map((d, i) => (
-                      <div key={i} style={{ color: 'var(--gray)', fontSize: 12 }}>· {d}</div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 4. Herramientas de limpieza */}
-            <div style={{ background: 'var(--card)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 12, padding: 20 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, color: '#ef4444' }}>🗑 Resetear datos de testing</div>
-              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 14 }}>Para volver a testear desde cero.</div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button className="btn btn-secondary"
-                  style={{ borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }}
-                  disabled={cleanLoading}
-                  onClick={async () => {
-                    if (!window.confirm('¿Borrar TODOS los puntos y resetear pronósticos evaluados?')) return;
-                    setCleanLoading(true); setCleanResult(null);
-                    try {
-                      const r = await API.delete('/prode-test/limpiar-puntos');
-                      setCleanResult(r.data);
-                      load();
-                      toast.success('Datos de testing limpiados');
-                    } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
-                    finally { setCleanLoading(false); }
-                  }}>
-                  Limpiar todos los puntos
-                </button>
-                <button className="btn btn-secondary"
-                  style={{ borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }}
-                  disabled={cleanLoading || !simPartido.matchId}
-                  onClick={async () => {
-                    if (!simPartido.matchId) { toast.error('Seleccioná un partido arriba'); return; }
-                    if (!window.confirm('¿Resetear este partido a scheduled?')) return;
-                    setCleanLoading(true);
-                    try {
-                      await API.post('/prode-test/resetear-partido', { matchId: simPartido.matchId });
-                      setSimResult(null);
-                      load();
-                      toast.success('Partido reseteado a scheduled');
-                    } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
-                    finally { setCleanLoading(false); }
-                  }}>
-                  Resetear partido seleccionado
-                </button>
-              </div>
-              {cleanResult && (
-                <div style={{ marginTop: 10, fontSize: 12, color: 'var(--gray)' }}>
-                  Puntos eliminados: <b style={{ color: 'var(--text)' }}>{cleanResult.puntosEliminados}</b> ·
-                  Pronósticos reseteados: <b style={{ color: 'var(--text)' }}>{cleanResult.pronosticosReseteados}</b>
-                </div>
-              )}
-            </div>
-
           </div>
         )}
 
@@ -1450,25 +1171,37 @@ export default function Prode() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Pts por ganador</label>
-                  <input type="number" min={1} value={cfgForm.pointsWinner || 1}
+                  <input type="number" min={1} value={cfgForm.pointsWinner ?? 3}
                     onChange={e => setCfgForm(p => ({ ...p, pointsWinner: Number(e.target.value) }))} />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Pts extra exacto</label>
-                  <input type="number" min={0} value={cfgForm.pointsExact || 5}
+                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Pts extra exacto (se suma al ganador)</label>
+                  <input type="number" min={0} value={cfgForm.pointsExact ?? 3}
                     onChange={e => setCfgForm(p => ({ ...p, pointsExact: Number(e.target.value) }))} />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Pts por compra</label>
-                  <input type="number" min={1} value={cfgForm.pointsPerOrder || 1}
-                    onChange={e => setCfgForm(p => ({ ...p, pointsPerOrder: Number(e.target.value) }))} />
+                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Pts bonus Cliente / VIP</label>
+                  <input type="number" min={0} value={cfgForm.pointsCategoryCliente ?? 3}
+                    onChange={e => setCfgForm(p => ({ ...p, pointsCategoryCliente: Number(e.target.value), pointsCategoryVip: Number(e.target.value) }))} />
                 </div>
               </div>
 
-              <div>
-                <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Bloqueo pronósticos (minutos antes del partido)</label>
-                <input type="number" min={0} value={cfgForm.cutoffMinutes || 30}
-                  onChange={e => setCfgForm(p => ({ ...p, cutoffMinutes: Number(e.target.value) }))} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Bloqueo pronósticos (minutos antes del partido)</label>
+                  <input type="number" min={0} value={cfgForm.cutoffMinutes || 30}
+                    onChange={e => setCfgForm(p => ({ ...p, cutoffMinutes: Number(e.target.value) }))} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>% descuento cupón invitados</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="number" min={1} max={100} value={cfgForm.guestCouponPercent ?? 20}
+                      onChange={e => setCfgForm(p => ({ ...p, guestCouponPercent: Number(e.target.value) }))}
+                      style={{ flex: 1 }} />
+                    <span style={{ color: 'var(--gray)', fontSize: 16, fontWeight: 600, paddingRight: 2 }}>%</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4, lineHeight: 1.4 }}>Solo aplica a nuevos cupones.</div>
+                </div>
               </div>
             </div>
 
@@ -1484,13 +1217,19 @@ export default function Prode() {
 }
 
 // ── Componente fila de partido ────────────────────────────────────────────────
-function MatchRow({ match, onSetResultado, statusBadge }) {
-  const [editScore, setEditScore] = useState(false);
-  const [home, setHome] = useState('');
-  const [away, setAway] = useState('');
-  const d = new Date(match.matchDate);
+function MatchRow({ match, onSetResultado, statusBadge, onConfirmTeams }) {
+  const [editScore,  setEditScore ] = useState(false);
+  const [editTeams,  setEditTeams ] = useState(false);
+  const [home,       setHome      ] = useState('');
+  const [away,       setAway      ] = useState('');
+  const [homeTeam,   setHomeTeam  ] = useState(match.homeTeam);
+  const [awayTeam,   setAwayTeam  ] = useState(match.awayTeam);
+  const [saving,     setSaving    ] = useState(false);
+
+  const d       = new Date(match.matchDate);
   const dateStr = d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
   const timeStr = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  const isTBD   = match.teamsConfirmed === false;
 
   const handleGuardar = () => {
     const h = home !== '' ? Number(home) : 0;
@@ -1499,46 +1238,89 @@ function MatchRow({ match, onSetResultado, statusBadge }) {
     setEditScore(false);
   };
 
+  const handleSubmitTeams = async () => {
+    if (!homeTeam.trim() || !awayTeam.trim()) return;
+    setSaving(true);
+    try {
+      await onConfirmTeams(match._id, homeTeam.trim(), awayTeam.trim());
+      setEditTeams(false);
+    } finally { setSaving(false); }
+  };
+
   return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
+    <div style={{ background: 'var(--card)', border: `1px solid ${isTBD ? 'rgba(234,179,8,0.25)' : 'var(--border)'}`, borderRadius: 10, padding: '12px 14px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 11, color: 'var(--gray)', minWidth: 64, flexShrink: 0, lineHeight: 1.4 }}>{dateStr}<br/>{timeStr}</div>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 180 }}>
-          <span style={{ fontWeight: 500, color: 'var(--text)', textAlign: 'right', flex: 1, fontSize: 13 }}>{match.homeTeam}</span>
+          <span style={{ fontWeight: 500, color: isTBD ? '#555' : 'var(--text)', textAlign: 'right', flex: 1, fontSize: 13, fontStyle: isTBD ? 'italic' : 'normal' }}>{match.homeTeam}</span>
           <span style={{ fontSize: 13, fontWeight: 700, color: match.status === 'finished' ? 'var(--gold)' : 'var(--gray)', minWidth: 44, textAlign: 'center', flexShrink: 0 }}>
             {match.status === 'finished'
               ? (match.homeScore !== null && match.awayScore !== null
                   ? `${match.homeScore}–${match.awayScore}`
                   : '— FIN —')
-              : match.status === 'live'
-                ? '🔴'
-                : 'vs'}
+              : match.status === 'live' ? '🔴' : 'vs'}
           </span>
-          <span style={{ fontWeight: 500, color: 'var(--text)', flex: 1, fontSize: 13 }}>{match.awayTeam}</span>
+          <span style={{ fontWeight: 500, color: isTBD ? '#555' : 'var(--text)', flex: 1, fontSize: 13, fontStyle: isTBD ? 'italic' : 'normal' }}>{match.awayTeam}</span>
         </div>
-        <div style={{ flexShrink: 0 }}>{statusBadge(match.status)}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          {isTBD && (
+            <span style={{ fontSize: 10, fontWeight: 700, background: 'rgba(234,179,8,0.1)', color: '#ca8a04', border: '1px solid rgba(234,179,8,0.25)', borderRadius: 4, padding: '2px 6px', letterSpacing: '0.05em' }}>
+              ⏳ POR CONFIRMAR
+            </span>
+          )}
+          {statusBadge(match.status)}
+        </div>
       </div>
+
+      {/* ── Acciones (solo partidos scheduled) ────────────────────────── */}
       {match.status === 'scheduled' && (
-        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-          {editScore ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 12, color: 'var(--gray)' }}>Resultado:</span>
-              <input type="number" min={0} max={20} value={home} onChange={e => setHome(e.target.value)}
-                style={{ width: 52, padding: '5px 6px', fontSize: 14, textAlign: 'center' }} placeholder="0" />
-              <span style={{ color: 'var(--gray)', fontWeight: 700 }}>–</span>
-              <input type="number" min={0} max={20} value={away} onChange={e => setAway(e.target.value)}
-                style={{ width: 52, padding: '5px 6px', fontSize: 14, textAlign: 'center' }} placeholder="0" />
-              <button onClick={handleGuardar} style={{ background: '#166534', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <CheckCircle size={13} /> Guardar
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {/* Cargar resultado */}
+          {!isTBD && (
+            editScore ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, color: 'var(--gray)' }}>Resultado:</span>
+                <input type="number" min={0} max={20} value={home} onChange={e => setHome(e.target.value)}
+                  style={{ width: 52, padding: '5px 6px', fontSize: 14, textAlign: 'center' }} placeholder="0" />
+                <span style={{ color: 'var(--gray)', fontWeight: 700 }}>–</span>
+                <input type="number" min={0} max={20} value={away} onChange={e => setAway(e.target.value)}
+                  style={{ width: 52, padding: '5px 6px', fontSize: 14, textAlign: 'center' }} placeholder="0" />
+                <button onClick={handleGuardar} style={{ background: '#166534', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <CheckCircle size={13} /> Guardar
+                </button>
+                <button onClick={() => setEditScore(false)} style={{ background: 'transparent', color: 'var(--gray)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setEditScore(true)} style={{ background: 'transparent', color: 'var(--gray)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}>
+                + Cargar resultado
               </button>
-              <button onClick={() => setEditScore(false)} style={{ background: 'transparent', color: 'var(--gray)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>
-                Cancelar
+            )
+          )}
+
+          {/* Confirmar equipos (solo si TBD) */}
+          {isTBD && (
+            editTeams ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: 1 }}>
+                <span style={{ fontSize: 12, color: 'var(--gray)', flexShrink: 0 }}>Equipos:</span>
+                <input value={homeTeam} onChange={e => setHomeTeam(e.target.value)}
+                  placeholder="Local" style={{ flex: 1, minWidth: 110, padding: '5px 8px', fontSize: 13 }} />
+                <span style={{ color: 'var(--gray)', fontWeight: 700, flexShrink: 0 }}>vs</span>
+                <input value={awayTeam} onChange={e => setAwayTeam(e.target.value)}
+                  placeholder="Visitante" style={{ flex: 1, minWidth: 110, padding: '5px 8px', fontSize: 13 }} />
+                <button onClick={handleSubmitTeams} disabled={saving} style={{ background: '#1e3a5f', color: '#74ACDF', border: '1px solid rgba(116,172,223,0.3)', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                  <CheckCircle size={13} /> {saving ? 'Guardando...' : 'Confirmar'}
+                </button>
+                <button onClick={() => { setEditTeams(false); setHomeTeam(match.homeTeam); setAwayTeam(match.awayTeam); }} style={{ background: 'transparent', color: 'var(--gray)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setEditTeams(true)} style={{ background: 'rgba(116,172,223,0.08)', color: '#74ACDF', border: '1px solid rgba(116,172,223,0.2)', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                ✏️ Definir equipos — habilitar pronósticos
               </button>
-            </div>
-          ) : (
-            <button onClick={() => setEditScore(true)} style={{ background: 'transparent', color: 'var(--gray)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}>
-              + Cargar resultado
-            </button>
+            )
           )}
         </div>
       )}

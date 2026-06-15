@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import API from '../utils/api';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, Save, MapPin, Clock, CreditCard, Users, Star, DollarSign, FileText, Lock, Target, MessageCircle, Zap, Calendar } from 'lucide-react';
+import { Plus, Trash2, Save, MapPin, Clock, CreditCard, Users, Star, DollarSign, FileText, Lock, Target, MessageCircle, Zap, Calendar, Globe, Image, AlertCircle } from 'lucide-react';
 
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const fmt = n => `$${Number(n || 0).toLocaleString('es-AR')}`;
@@ -65,6 +65,22 @@ export default function Config() {
   });
   const [products, setProducts] = useState([]);
 
+  // ── Modo Mundial ──────────────────────────────────────────────────────────
+  const [mundialMode,   setMundialMode  ] = useState(false);
+  const [argentinaGano, setArgentinaGano] = useState(false);
+  const [nextMatch,     setNextMatch    ] = useState({
+    opponent: '', date: '', label: 'Mundial 2026'
+  });
+
+  // ── Hero image ────────────────────────────────────────────────────────────
+  const [heroImage, setHeroImage]               = useState({ url: null, publicId: null });
+  const [heroUploading, setHeroUploading]       = useState(false);
+
+  // ── Excepciones de operación ──────────────────────────────────────────────
+  const [operationOverrides, setOperationOverrides] = useState([]);
+  const [newOverride, setNewOverride]               = useState({ date: '', status: 'closed', message: '' });
+  const [savingOverrides, setSavingOverrides]        = useState(false);
+
   // ── Templates de WhatsApp ─────────────────────────────────────────────────
   const WA_DEFAULTS = {
     orderReceived:  '¡Hola {nombre}! 👋\n\nRecibimos tu pedido *{codigo}* ✅\n\nEn breve te confirmamos cuando la cocina lo apruebe.\n\n_Janz Burgers_ 🍔',
@@ -114,6 +130,11 @@ export default function Config() {
         if (cfg.cajaGoals) setCajaGoals(cfg.cajaGoals);
         if (cfg.reviewSettings) setReviewSettings(cfg.reviewSettings);
         if (cfg.whatsappTemplates) setWaTemplates(t => ({ ...t, ...cfg.whatsappTemplates }));
+        if (cfg.mundialMode  !== undefined) setMundialMode(!!cfg.mundialMode);
+        if (cfg.argentinaGano !== undefined) setArgentinaGano(!!cfg.argentinaGano);
+        if (cfg.nextMatch) setNextMatch(nm => ({ ...nm, ...cfg.nextMatch }));
+        if (cfg.heroImage) setHeroImage(cfg.heroImage);
+        if (cfg.operationOverrides) setOperationOverrides(cfg.operationOverrides || []);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -225,6 +246,63 @@ export default function Config() {
   };
 
   const totalShares = users.filter(u => u.active).reduce((s, u) => s + (u.profitShare || 0), 0);
+
+  // ── Hero image ────────────────────────────────────────────────────────────
+  const uploadHeroImage = async (file) => {
+    if (!file) return;
+    setHeroUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const uploadRes = await API.post('/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const newHero = { url: uploadRes.data.url, publicId: uploadRes.data.publicId };
+      // Delete old image from cloudinary
+      if (heroImage.publicId) {
+        await API.delete('/upload', { data: { publicId: heroImage.publicId } }).catch(() => {});
+      }
+      setHeroImage(newHero);
+      await API.put('/config/heroImage', { value: newHero });
+      toast.success('Imagen del hero actualizada ✓');
+    } catch { toast.error('Error al subir imagen'); }
+    finally { setHeroUploading(false); }
+  };
+
+  const removeHeroImage = async () => {
+    if (!window.confirm('¿Restaurar la imagen original del hero?')) return;
+    try {
+      if (heroImage.publicId) {
+        await API.delete('/upload', { data: { publicId: heroImage.publicId } }).catch(() => {});
+      }
+      const empty = { url: null, publicId: null };
+      setHeroImage(empty);
+      await API.put('/config/heroImage', { value: empty });
+      toast.success('Imagen restaurada a la original');
+    } catch { toast.error('Error al eliminar imagen'); }
+  };
+
+  // ── Excepciones de operación ──────────────────────────────────────────────
+  const addOverride = () => {
+    if (!newOverride.date) return toast.error('Seleccioná una fecha');
+    if (operationOverrides.find(o => o.date === newOverride.date)) {
+      return toast.error('Ya existe una excepción para ese día');
+    }
+    const updated = [...operationOverrides, { ...newOverride }].sort((a, b) => a.date.localeCompare(b.date));
+    setOperationOverrides(updated);
+    setNewOverride({ date: '', status: 'closed', message: '' });
+  };
+
+  const deleteOverride = (date) => {
+    setOperationOverrides(o => o.filter(x => x.date !== date));
+  };
+
+  const saveOverrides = async () => {
+    setSavingOverrides(true);
+    try {
+      await API.put('/config/operationOverrides', { value: operationOverrides });
+      toast.success('Excepciones guardadas ✓');
+    } catch { toast.error('Error al guardar'); }
+    finally { setSavingOverrides(false); }
+  };
 
   if (loading) return (
     <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
@@ -958,6 +1036,175 @@ export default function Config() {
           </button>
         </Section>
 
+      {/* ── MODO MUNDIAL ────────────────────────────────────────────── */}
+        <Section title="⚽ Modo Mundial" icon={Globe}>
+
+          {/* Switch principal */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'var(--dark)', borderRadius: 10, border: `1px solid ${mundialMode ? 'rgba(116,172,223,0.4)' : 'var(--border)'}`, marginBottom: 12 }}>
+            <div>
+              <div style={{ fontWeight: 700, color: mundialMode ? '#74ACDF' : 'var(--gray)', marginBottom: 2 }}>
+                {mundialMode ? '🟢 Modo Mundial Activo' : '⚪ Modo Mundial Inactivo'}
+              </div>
+              <div style={{ fontSize: '0.76rem', color: 'var(--gray)', lineHeight: 1.4 }}>
+                Activa la experiencia especial de Mundial en el sitio público
+              </div>
+            </div>
+            <button
+              className={`btn btn-sm ${mundialMode ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ background: mundialMode ? '#74ACDF' : undefined, color: mundialMode ? '#000' : undefined, minWidth: 90 }}
+              onClick={async () => {
+                const next = !mundialMode;
+                setMundialMode(next);
+                try {
+                  await API.put('/config/mundialMode', { value: next });
+                  toast.success(next ? '⚽ Modo Mundial activado' : 'Modo Mundial desactivado');
+                } catch { toast.error('Error al guardar'); setMundialMode(!next); }
+              }}>
+              {mundialMode ? 'Desactivar' : 'Activar'}
+            </button>
+          </div>
+
+          <div style={{ opacity: mundialMode ? 1 : 0.4, pointerEvents: mundialMode ? 'auto' : 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+            {/* Argentina Ganó */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--dark)', borderRadius: 10, border: `1px solid ${argentinaGano ? 'rgba(116,172,223,0.4)' : 'var(--border)'}` }}>
+              <div>
+                <div style={{ fontWeight: 700, color: argentinaGano ? '#74ACDF' : 'var(--text)', marginBottom: 2, fontSize: '0.9rem' }}>
+                  🇦🇷 Modo "Argentina Ganó"
+                </div>
+                <div style={{ fontSize: '0.74rem', color: 'var(--gray)' }}>
+                  Muestra banner de celebración con confetti y promos especiales
+                </div>
+              </div>
+              <button
+                className={`btn btn-sm ${argentinaGano ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ background: argentinaGano ? '#74ACDF' : undefined, color: argentinaGano ? '#000' : undefined, minWidth: 90 }}
+                onClick={async () => {
+                  const next = !argentinaGano;
+                  setArgentinaGano(next);
+                  try {
+                    await API.put('/config/argentinaGano', { value: next });
+                    toast.success(next ? '🇦🇷 ¡Argentina ganó activado!' : 'Desactivado');
+                  } catch { toast.error('Error'); setArgentinaGano(!next); }
+                }}>
+                {argentinaGano ? 'Desactivar' : 'Activar'}
+              </button>
+            </div>
+
+            {/* Próximo partido */}
+            <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  📅 Próximo partido
+                </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 4 }}
+                  onClick={async () => {
+                    setSaving('autoMatch');
+                    try {
+                      const r = await API.get('/config/next-match-arg');
+                      if (r.data.next) {
+                        setNextMatch(m => ({ ...m, ...r.data.next }));
+                        toast.success(`🇦🇷 Argentina vs ${r.data.next.opponent} detectado`);
+                      } else {
+                        toast('No se encontró próximo partido', { icon: 'ℹ️' });
+                      }
+                    } catch { toast.error('Error al consultar la API'); }
+                    finally { setSaving(''); }
+                  }}
+                  disabled={saving === 'autoMatch'}>
+                  {saving === 'autoMatch' ? '⏳ Consultando...' : '🔄 Autodetectar desde API'}
+                </button>
+              </div>
+
+              {nextMatch.opponent && (
+                <div style={{ background: 'rgba(116,172,223,0.07)', border: '1px solid rgba(116,172,223,0.2)', borderRadius: 8, padding: '10px 12px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: '1.1rem' }}>🇦🇷</span>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#74ACDF', fontSize: '0.88rem' }}>Argentina vs {nextMatch.opponent}</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>
+                      {nextMatch.label} · {nextMatch.date ? new Date(nextMatch.date).toLocaleString('es-AR', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
+                      {nextMatch.stadium ? ` · ${nextMatch.stadium}` : ''}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--gray)', marginBottom: 2 }}>
+                  Override manual — dejá vacío para usar la autodetección
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 130 }}>
+                    <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Rival</label>
+                    <input
+                      value={nextMatch.opponent || ''}
+                      onChange={e => setNextMatch(m => ({ ...m, opponent: e.target.value }))}
+                      placeholder="Autodetectado desde API"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 170 }}>
+                    <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Fecha y hora</label>
+                    <input
+                      type="datetime-local"
+                      value={nextMatch.date ? nextMatch.date.slice(0, 16) : ''}
+                      onChange={e => setNextMatch(m => ({ ...m, date: e.target.value ? new Date(e.target.value).toISOString() : '' }))}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 130 }}>
+                    <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Etapa</label>
+                    <input
+                      value={nextMatch.label || ''}
+                      onChange={e => setNextMatch(m => ({ ...m, label: e.target.value }))}
+                      placeholder="Ej: Octavos de final"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={async () => {
+                      setSaving('nextMatch');
+                      try {
+                        await API.put('/config/nextMatch', { value: nextMatch.opponent ? nextMatch : null });
+                        toast.success('Próximo partido guardado');
+                      } catch { toast.error('Error al guardar'); }
+                      finally { setSaving(''); }
+                    }}
+                    disabled={saving === 'nextMatch'}>
+                    <Save size={13} /> {saving === 'nextMatch' ? 'Guardando...' : 'Guardar override'}
+                  </button>
+                  {nextMatch.opponent && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={async () => {
+                        setNextMatch({ opponent: '', date: '', label: 'Mundial 2026' });
+                        try {
+                          await API.put('/config/nextMatch', { value: null });
+                          toast.success('Override eliminado — se usará autodetección');
+                        } catch { toast.error('Error'); }
+                      }}>
+                      ✕ Limpiar override
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Info badges */}
+            <div style={{ background: 'rgba(116,172,223,0.05)', border: '1px solid rgba(116,172,223,0.15)', borderRadius: 10, padding: '12px 16px' }}>
+              <div style={{ fontSize: '0.76rem', color: 'var(--gray)', lineHeight: 1.6 }}>
+                💡 <strong style={{ color: 'var(--text)' }}>Badges de productos:</strong> Para agregar etiquetas como "MÁS ELEGIDA" o "COMBO MUNDIAL" a las tarjetas, editá el objeto <code style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, padding: '1px 5px', fontSize: '0.72rem' }}>MUNDIAL_BADGES</code> en <code style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, padding: '1px 5px', fontSize: '0.72rem' }}>src/components/ModoMundial.jsx</code>
+              </div>
+            </div>
+
+          </div>
+        </Section>
+
       {/* Contraseña para eliminar pedidos */}
         <Section title="Seguridad" icon={Lock}>
           <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: 14 }}>
@@ -980,6 +1227,131 @@ export default function Config() {
               <Save size={15} /> {saving === 'deletePass' ? 'Guardando...' : 'Guardar'}
             </button>
           </div>
+        </Section>
+
+      {/* ── Imagen del Hero ──────────────────────────────────────────── */}
+        <Section title="Imagen del Hero (portada)" icon={Image}>
+          <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: 16 }}>
+            Esta imagen se muestra como fondo de la portada en la página pública. Si no subís ninguna, se usa la imagen original.
+          </p>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              {heroImage.url ? (
+                <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 12 }}>
+                  <img src={heroImage.url} alt="Hero actual" style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }} />
+                  <div style={{ position: 'absolute', top: 8, right: 8 }}>
+                    <button onClick={removeHeroImage} className="btn btn-sm" style={{ background: 'rgba(239,68,68,0.85)', color: 'white', border: 'none' }}>
+                      <Trash2 size={13} /> Quitar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ height: 120, background: 'var(--card)', border: '2px dashed var(--border)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12, color: 'var(--gray)', fontSize: '0.82rem', gap: 8 }}>
+                  <Image size={20} /> Usando imagen original
+                </div>
+              )}
+              <div>
+                <input
+                  id="hero-img-input"
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={e => { if (e.target.files[0]) uploadHeroImage(e.target.files[0]); e.target.value = ''; }}
+                />
+                <button
+                  className="btn btn-primary"
+                  style={{ width: '100%' }}
+                  disabled={heroUploading}
+                  onClick={() => document.getElementById('hero-img-input').click()}
+                >
+                  <Image size={15} /> {heroUploading ? 'Subiendo...' : heroImage.url ? 'Cambiar imagen' : 'Subir imagen'}
+                </button>
+              </div>
+              <p style={{ color: 'var(--gray)', fontSize: '0.75rem', marginTop: 8 }}>JPG, PNG o WebP · Máx. 5MB · Recomendado: 1200×600px</p>
+            </div>
+          </div>
+        </Section>
+
+        {/* ── Excepciones de horario ────────────────────────────────────── */}
+        <Section title="Excepciones de apertura" icon={AlertCircle}>
+          <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: 4 }}>
+            Controlá días especiales que salen de tu horario habitual.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 4, fontSize: '0.78rem', color: 'var(--gray)' }}>
+            <div>🔴 <strong>Cerrado excepcional</strong> — un día que normalmente abrís pero hoy no podés</div>
+            <div>🟢 <strong>Abierto excepcional</strong> — un día que normalmente no abrís pero hoy sí</div>
+          </div>
+          <div style={{ height: 1, background: 'var(--border)', margin: '14px 0' }} />
+
+          {/* Form nueva excepción */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto', gap: 8, alignItems: 'end', marginBottom: 16, flexWrap: 'wrap' }}>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: 'var(--gray)', display: 'block', marginBottom: 4 }}>FECHA</label>
+              <input
+                type="date"
+                value={newOverride.date}
+                onChange={e => setNewOverride(o => ({ ...o, date: e.target.value }))}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: 'var(--gray)', display: 'block', marginBottom: 4 }}>ESTADO</label>
+              <select
+                value={newOverride.status}
+                onChange={e => setNewOverride(o => ({ ...o, status: e.target.value }))}
+                style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'white', cursor: 'pointer' }}
+              >
+                <option value="closed">🔴 Cerrado hoy</option>
+                <option value="open">🟢 Abierto hoy</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: 'var(--gray)', display: 'block', marginBottom: 4 }}>MENSAJE (opcional)</label>
+              <input
+                value={newOverride.message}
+                onChange={e => setNewOverride(o => ({ ...o, message: e.target.value }))}
+                placeholder={newOverride.status === 'closed' ? 'Ej: Hoy no abrimos, volvemos el viernes' : 'Ej: ¡Hoy abrimos! Lunes especial 🎉'}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <button className="btn btn-primary" onClick={addOverride} style={{ alignSelf: 'end' }}>
+              <Plus size={14} /> Agregar
+            </button>
+          </div>
+
+          {/* Lista de excepciones */}
+          {operationOverrides.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--gray)', fontSize: '0.85rem', padding: '20px 0' }}>
+              Sin excepciones configuradas. El local abre según el horario habitual.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+              {operationOverrides.map(o => {
+                const dateObj = new Date(o.date + 'T12:00:00');
+                const dayName = dateObj.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+                const isToday = o.date === new Date().toISOString().slice(0, 10);
+                return (
+                  <div key={o.date} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: o.status === 'closed' ? 'rgba(239,68,68,0.06)' : 'rgba(34,197,94,0.06)', border: `1px solid ${o.status === 'closed' ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)'}`, borderRadius: 10 }}>
+                    <span style={{ fontSize: '1.1rem' }}>{o.status === 'closed' ? '🔴' : '🟢'}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'white', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {dayName}
+                        {isToday && <span style={{ background: 'var(--gold)', color: '#000', fontSize: '0.6rem', fontWeight: 900, padding: '1px 6px', borderRadius: 99 }}>HOY</span>}
+                      </div>
+                      {o.message && <div style={{ fontSize: '0.77rem', color: 'var(--gray)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.message}</div>}
+                    </div>
+                    <button onClick={() => deleteOverride(o.date)} className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--gray)', border: '1px solid var(--border)', flexShrink: 0 }}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <button className="btn btn-primary" onClick={saveOverrides} disabled={savingOverrides}>
+            <Save size={15} /> {savingOverrides ? 'Guardando...' : 'Guardar excepciones'}
+          </button>
         </Section>
 
       </div>

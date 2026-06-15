@@ -83,33 +83,34 @@ function BasesModal({ config, aceptoBases, setAceptoBases, setShowBases }) {
 
         <div style={{ padding: '16px 20px', fontSize: 13, color: '#888', lineHeight: 1.7 }}>
           <BasesSection n="1" title="¿Quiénes pueden participar?">
-            Todos los clientes de Janz Burgers con al menos un pedido realizado pueden participar gratuitamente.
+            Cualquier persona mayor de edad puede registrarse con nombre y WhatsApp.
+            Si ya compraste en Janz, ingresá con tu número. Si nunca compraste, registrate como invitado.
           </BasesSection>
-          <BasesSection n="2" title="Sistema de puntos">
+          <BasesSection n="2" title="Sistema de puntos (ranking)">
             <ul style={{ marginTop: 8, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <li><b style={{ color: C.yellow }}>Acierto ganador / empate:</b> {config?.pointsWinner ?? 1} punto{(config?.pointsWinner ?? 1) !== 1 ? 's' : ''}.</li>
-              <li><b style={{ color: C.yellow }}>Marcador exacto:</b> +{config?.pointsExact ?? 5} puntos extra.</li>
-              <li><b style={{ color: C.yellow }}>Puntos por compra:</b> Cada pedido suma {config?.pointsPerOrder ?? 1} punto{(config?.pointsPerOrder ?? 1) !== 1 ? 's' : ''} automáticamente.</li>
+              <li><b style={{ color: C.yellow }}>Acierto ganador / empate:</b> {config?.pointsWinner ?? 3} punto{(config?.pointsWinner ?? 3) !== 1 ? 's' : ''}.</li>
+              <li><b style={{ color: C.yellow }}>Marcador exacto:</b> {(config?.pointsWinner ?? 3) + (config?.pointsExact ?? 3)} puntos en total (incluye el acierto de ganador).</li>
+              <li><b style={{ color: C.yellow }}>Bonus categoría:</b> +3 pts al pasar a Cliente (1.ª compra entregada) y +3 pts al llegar a VIP (2 entregas en el Mundial). Máximo 6 pts por compras.</li>
             </ul>
           </BasesSection>
-          <BasesSection n="3" title="Mecánica">
-            Los pronósticos cierran {config?.cutoffMinutes ?? 30} minutos antes de cada partido. No se pueden modificar una vez cerrados.
-            {config?.condicionOro && (
-              <><br/><br/><b style={{ color: C.text }}>Condición de Oro:</b> Para ser elegible a los premios finales, el participante debe haber {config.condicionOro}.</>
-            )}
-            {!config?.condicionOro && (
-              <><br/><br/><b style={{ color: C.text }}>Condición de Oro:</b> Para ser elegible a los premios finales, el participante debe haber realizado al menos 3 compras durante el torneo.</>
-            )}
+          <BasesSection n="3" title="Cómo pronosticar">
+            <ul style={{ marginTop: 8, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <li>Ingresá el <b style={{ color: C.text }}>marcador exacto</b> que creés que va a quedar (ej: 2–1). El sistema deduce automáticamente quién gana o si es empate.</li>
+              <li>Los pronósticos cierran <b style={{ color: C.yellow }}>{config?.cutoffMinutes ?? 30} minutos</b> antes de cada partido.</li>
+              <li>Las compras cuentan cuando el pedido es <b style={{ color: C.text }}>entregado</b>.</li>
+            </ul>
           </BasesSection>
           <BasesSection n="4" title="Premios">
             <ul style={{ marginTop: 8, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <li>🥇 <b style={{ color: C.yellow }}>1° Puesto:</b> {config?.prize1 || '1 mes de Janz gratis (1 combo doble/semana × 4 semanas) + mini pelota oficial'}.</li>
-              <li>🥈 <b style={{ color: '#aaa' }}>2° Puesto:</b> {config?.prize2 || 'Mini pelota oficial + 1 combo doble a elección'}.</li>
-              <li>🥉 <b style={{ color: '#cd7f32' }}>3° Puesto:</b> {config?.prize3 || '1 combo doble a elección'}.</li>
+              <li>🎟️ <b style={{ color: C.yellow }}>Invitados:</b> {config?.prizeInvitado || 'Cupón 20% en tu primera compra'}.</li>
+              <li>🍔 <b style={{ color: C.yellow }}>Clientes (sin compras en el Mundial):</b> {config?.prizeCliente || 'Combo doble a elección'}.</li>
+              <li>🥇 <b style={{ color: C.yellow }}>1° Puesto (competidores):</b> {config?.prize1 || 'Premio mayor a definir'}.</li>
+              <li>🥈 <b style={{ color: '#aaa' }}>2° Puesto:</b> {config?.prize2 || 'Premio medio a definir'}.</li>
+              <li>🥉 <b style={{ color: '#cd7f32' }}>3° Puesto:</b> {config?.prize3 || 'Premio menor a definir'}.</li>
             </ul>
           </BasesSection>
           <BasesSection n="5" title="Empates">
-            En caso de empate: (1) mayor cantidad de exactos, (2) mayor cantidad de compras, (3) pregunta del dueño.
+            En caso de empate en el ranking: (1) mayor cantidad de exactos, (2) pregunta del dueño.
           </BasesSection>
           {config?.termsExtra && (
             <BasesSection n="6" title="Condiciones adicionales">
@@ -137,6 +138,8 @@ function BasesModal({ config, aceptoBases, setAceptoBases, setShowBases }) {
 
 export default function PublicProde() {
   const [fase,        setFase       ] = useState('loading');
+  const [loginMode,   setLoginMode  ] = useState('cliente');
+  const [regNombre,   setRegNombre  ] = useState('');
   const [whatsapp,    setWhatsapp   ] = useState('');
   const [loginLoading,setLoginLoading] = useState(false);
   const [otpCode,     setOtpCode    ] = useState('');
@@ -151,6 +154,7 @@ export default function PublicProde() {
   const [config,      setConfig     ] = useState(null);
   const [saving,      setSaving     ] = useState(null);
   const [ranking,     setRanking    ] = useState([]);
+  const [estado,      setEstado     ] = useState(null);
   const [showBases,   setShowBases  ] = useState(false);
   const [aceptoBases, setAceptoBases] = useState(false);
   const [tab,         setTab        ] = useState('fixture'); // 'fixture' | 'ranking' | 'puntos'
@@ -181,11 +185,12 @@ export default function PublicProde() {
 
   const cargarProde = async (cid) => {
     try {
-      const [fRes, pRes, ptsRes, rankRes] = await Promise.allSettled([
+      const [fRes, pRes, ptsRes, rankRes, estRes] = await Promise.allSettled([
         API.get('/prode/fixture'),
         API.get(`/prode/pronosticos/${cid}`),
         API.get(`/prode/puntos/${cid}`),
         API.get('/prode/ranking/publico'),
+        API.get(`/prode/estado/${cid}`),
       ]);
 
       if (fRes.status === 'rejected') {
@@ -210,6 +215,10 @@ export default function PublicProde() {
         setRanking(rankRes.value.data);
       }
 
+      if (estRes.status === 'fulfilled') {
+        setEstado(estRes.value.data);
+      }
+
       setFase('prode');
     } catch {
       toast.error('Error cargando el prode');
@@ -232,15 +241,29 @@ export default function PublicProde() {
   // Paso 1 — validar WA y enviar código OTP
   const handleSolicitarCodigo = async () => {
     if (!whatsapp.trim()) return;
+    if (loginMode === 'invitado' && !regNombre.trim()) {
+      toast.error('Ingresá tu nombre');
+      return;
+    }
     setLoginLoading(true);
     try {
-      const res = await API.post('/prode/acceso/codigo', { whatsapp });
-      setOtpNombre(res.data.nombre);
+      if (loginMode === 'invitado') {
+        const res = await API.post('/prode/registro', { nombre: regNombre.trim(), whatsapp });
+        setOtpNombre(res.data.nombre);
+        if (res.data.cuponInvitado) toast.success(`Cupón: ${res.data.cuponInvitado}`, { duration: 5000 });
+      } else {
+        const res = await API.post('/prode/acceso/codigo', { whatsapp });
+        setOtpNombre(res.data.nombre);
+      }
       setOtpCode('');
       setFase('otp');
       startResendTimer();
     } catch (e) {
-      toast.error(e.response?.data?.message || 'Error al enviar código');
+      if (e.response?.data?.code === 'CLIENT_NOT_FOUND' && loginMode === 'cliente') {
+        toast.error('No encontramos tu número. Probá registrarte como invitado.');
+      } else {
+        toast.error(e.response?.data?.message || 'Error al enviar código');
+      }
     } finally { setLoginLoading(false); }
   };
 
@@ -250,8 +273,9 @@ export default function PublicProde() {
     setLoginLoading(true);
     try {
       const res = await API.post('/prode/acceso/verificar', { whatsapp, code: otpCode });
-      const { clientId: cid, nombre: nom } = res.data;
+      const { clientId: cid, nombre: nom, estado: est } = res.data;
       setClientId(cid); setNombre(nom);
+      if (est) setEstado(est);
       localStorage.setItem('janz_prode_client', JSON.stringify({ clientId: cid, nombre: nom }));
       clearInterval(resendTimerRef.current);
       setFase('cargando_prode');
@@ -267,7 +291,11 @@ export default function PublicProde() {
     if (resendSecs > 0) return;
     setLoginLoading(true);
     try {
-      await API.post('/prode/acceso/codigo', { whatsapp });
+      if (loginMode === 'invitado') {
+        await API.post('/prode/registro', { nombre: regNombre.trim(), whatsapp });
+      } else {
+        await API.post('/prode/acceso/codigo', { whatsapp });
+      }
       setOtpCode('');
       toast.success('Nuevo código enviado 👍');
       startResendTimer();
@@ -297,7 +325,7 @@ export default function PublicProde() {
 
   // ── Computed ──────────────────────────────────────────────────────────────
   const ptsPronosticos = puntos.historial.filter(h => h.tipo === 'pronostico').reduce((s, h) => s + h.puntos, 0);
-  const ptsCompras     = puntos.historial.filter(h => h.tipo === 'compra').reduce((s, h) => s + h.puntos, 0);
+  const ptsBonus       = puntos.historial.filter(h => h.tipo === 'bonificacion').reduce((s, h) => s + h.puntos, 0);
 
   const pronosticados   = Object.keys(pronosticos).length;
   const posicion        = ranking.findIndex(r => String(r._id) === String(clientId)) + 1 || null;
@@ -365,8 +393,8 @@ export default function PublicProde() {
           </div>
 
           <p style={{ color: C.text2, fontSize: 14, lineHeight: 1.6, marginTop: 16, marginBottom: 0 }}>
-            Pronosticá los 104 partidos del Mundial.<br />
-            Cada burger suma puntos. Ganá premios reales.
+            Pronosticá el Mundial y ganá premios reales.<br />
+            Ranking por aciertos + bonus al comprar en Janz.
           </p>
         </div>
       </div>
@@ -387,11 +415,42 @@ export default function PublicProde() {
 
       {/* Form login */}
       <div style={{ padding: '0 20px 12px', maxWidth: 400, margin: '0 auto' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          {[
+            { key: 'cliente', label: 'Ya me registré' },
+            { key: 'invitado', label: 'Soy nuevo' },
+          ].map(m => (
+            <button key={m.key} onClick={() => setLoginMode(m.key)}
+              style={{ flex: 1, padding: '10px 8px', borderRadius: 10, border: `1px solid ${loginMode === m.key ? C.yellow : C.border2}`, background: loginMode === m.key ? C.yellowBg2 : C.surface, color: loginMode === m.key ? C.yellow : C.text2, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 20, padding: 24 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>¿Ya compraste en Janz?</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+            {loginMode === 'cliente' ? '¿Ya te registraste?' : 'Registrate al prode'}
+          </div>
           <p style={{ color: C.text2, fontSize: 12, marginTop: 0, marginBottom: 18, lineHeight: 1.5 }}>
-            Ingresá con el número de WhatsApp que usaste al pedir.
+            {loginMode === 'cliente'
+              ? 'Ingresá con el WhatsApp que usaste al registrarte (o al pedir en Janz). Te mandamos un código de verificación.'
+              : 'Solo nombre y WhatsApp. Si ya compraste en Janz antes, usá la opción "Ya me registré". Recibís cupón 15% para tu primera compra.'}
           </p>
+
+          {loginMode === 'invitado' && (
+            <>
+              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: C.text3, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
+                Tu nombre
+              </label>
+              <input
+                type="text"
+                value={regNombre}
+                onChange={e => setRegNombre(e.target.value)}
+                placeholder="Ej: Juan"
+                style={{ width: '100%', background: C.card, border: `1px solid ${C.border2}`, borderRadius: 12, color: C.text, padding: '13px 16px', fontSize: 16, outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
+              />
+            </>
+          )}
 
           <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: C.text3, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>
             Tu WhatsApp
@@ -421,9 +480,9 @@ export default function PublicProde() {
         <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10, textAlign: 'center' }}>Premios</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {[
-            { pos: '🥇', txt: config?.prize1 || '1 mes de Janz gratis + Mini pelota oficial' },
-            { pos: '🥈', txt: config?.prize2 || 'Mini pelota oficial + Combo doble' },
-            { pos: '🥉', txt: config?.prize3 || 'Combo doble a elección' },
+            { pos: '🎟️', txt: config?.prizeInvitado || 'Cupón 20% invitados' },
+            { pos: '🍔', txt: config?.prizeCliente || 'Combo doble (clientes sin compras en el Mundial)' },
+            { pos: '🥇', txt: config?.prize1 || 'Top 3 — premio 1° puesto' },
           ].map(({ pos, txt }) => (
             <div key={pos} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 18 }}>{pos}</span>
@@ -489,12 +548,12 @@ export default function PublicProde() {
               pattern="[0-9]*"
               maxLength={4}
               value={otpCode}
-              onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
               onKeyDown={e => e.key === 'Enter' && handleVerificarCodigo()}
               autoFocus
               placeholder="0000"
               style={{
-                width: '100%', background: C.card, border: `2px solid ${otpCode.length === 6 ? C.yellow : C.border2}`,
+                width: '100%', background: C.card, border: `2px solid ${otpCode.length === 4 ? C.yellow : C.border2}`,
                 borderRadius: 14, color: C.text, padding: '16px 20px', fontSize: 28, letterSpacing: '0.5em',
                 outline: 'none', boxSizing: 'border-box', textAlign: 'center', fontFamily: 'monospace',
                 transition: 'border-color 0.2s',
@@ -552,7 +611,7 @@ export default function PublicProde() {
           <div style={{ width: 34, height: 34, background: C.yellowBg2, border: `1px solid ${C.yellow}44`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17 }}>🏆</div>
           <div>
             <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 16, color: C.yellow, lineHeight: 1, letterSpacing: 1 }}>PRODE JANZ</div>
-            <div style={{ fontSize: 11, color: C.text2, marginTop: 2 }}>Hola, {nombre} 👋</div>
+            <div style={{ fontSize: 11, color: C.text2, marginTop: 2 }}>Hola, {nombre} 👋 {estado?.categoriaLabel && <span style={{ color: C.yellow, fontWeight: 700 }}>· {estado.categoriaLabel}</span>}</div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -569,13 +628,28 @@ export default function PublicProde() {
         </div>
       </div>
 
+      {/* Categoría y progreso */}
+      {estado && (
+        <div style={{ margin: '12px 14px 0', background: C.yellowBg, border: `1px solid ${C.yellow}33`, borderRadius: 14, padding: '12px 14px' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.yellow, marginBottom: 4 }}>
+            {estado.categoriaLabel} · {estado.premioDescripcion}
+          </div>
+          <div style={{ fontSize: 11, color: C.text2, lineHeight: 1.5 }}>{estado.proximoPaso}</div>
+          {estado.cuponInvitado && (
+            <div style={{ marginTop: 8, fontSize: 11, color: C.text }}>
+              🎟️ Cupón invitado: <b style={{ color: C.yellow }}>{estado.cuponInvitado}</b>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Stats bar */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 1, borderBottom: `1px solid ${C.border}`, background: C.border }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 1, borderBottom: `1px solid ${C.border}`, background: C.border, marginTop: 12 }}>
         {[
           { val: puntos.total,       label: 'Total',    color: C.yellow  },
           { val: ptsPronosticos,     label: 'Pronóst.', color: '#a78bfa' },
-          { val: ptsCompras,         label: 'Compras',  color: C.green   },
-          { val: `${pronosticados}/${fixture.length}`, label: 'Pronost.', color: C.text2 },
+          { val: ptsBonus,           label: 'Bonus',    color: C.green   },
+          { val: `${pronosticados}/${fixture.length}`, label: 'Hechos', color: C.text2 },
         ].map(({ val, label, color }) => (
           <div key={label} style={{ background: C.surface, padding: '10px 0', textAlign: 'center' }}>
             <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 18, color, letterSpacing: 0.5 }}>{val}</div>
@@ -701,8 +775,8 @@ export default function PublicProde() {
                   <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, color: '#a78bfa' }}>{ptsPronosticos} pts</div>
                 </div>
                 <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: '10px 14px', flex: 1 }}>
-                  <div style={{ fontSize: 9, color: C.green, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Compras</div>
-                  <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, color: C.green }}>{ptsCompras} pts</div>
+                  <div style={{ fontSize: 9, color: C.green, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Bonus categoría</div>
+                  <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, color: C.green }}>{ptsBonus} pts</div>
                 </div>
               </div>
             </div>
@@ -730,7 +804,7 @@ export default function PublicProde() {
                     <div>
                       <div style={{ fontSize: 12, color: C.text, marginBottom: 2 }}>{h.descripcion || 'Puntos'}</div>
                       <div style={{ fontSize: 10, color: C.text3 }}>
-                        {h.tipo === 'pronostico' ? '⚽ Pronóstico' : h.tipo === 'compra' ? '🍔 Compra' : '⭐ Bonificación'}
+                        {h.tipo === 'pronostico' ? '⚽ Pronóstico' : h.tipo === 'bonificacion' ? '🎁 Bonus' : h.tipo === 'compra' ? '🍔 Compra (legacy)' : '⭐ Otro'}
                         {' · '}
                         {new Date(h.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}
                       </div>
@@ -779,155 +853,248 @@ if (!document.getElementById('prode-spin-style')) {
   document.head.appendChild(style);
 }
 
-// ── MATCH CARD ─────────────────────────────────────────────────────────────────
+// ── MATCH CARD — resultado unificado obligatorio ───────────────────────────────
 function MatchCard({ match, pronostico, onPronostico, saving, config }) {
-  const [showExact,  setShowExact ] = useState(false);
-  const [homeGoals,  setHomeGoals ] = useState('');
-  const [awayGoals,  setAwayGoals ] = useState('');
-  const [localWinner,setLocalWinner] = useState(null);
+  const [homeGoals, setHomeGoals] = useState(
+    pronostico?.predictedHome != null ? String(pronostico.predictedHome) : ''
+  );
+  const [awayGoals, setAwayGoals] = useState(
+    pronostico?.predictedAway != null ? String(pronostico.predictedAway) : ''
+  );
+  // Sincronizar si llega un pronóstico nuevo desde afuera (eg. reload)
+  useEffect(() => {
+    if (pronostico?.predictedHome != null) setHomeGoals(String(pronostico.predictedHome));
+    if (pronostico?.predictedAway != null) setAwayGoals(String(pronostico.predictedAway));
+  }, [pronostico]);
 
-  const cutoffMs = (config?.cutoffMinutes || 30) * 60 * 1000;
-  const locked    = match.status !== 'scheduled' || (new Date(match.matchDate) - new Date() < cutoffMs);
-  const selected  = pronostico?.predictedWinner;
+  const cutoffMs  = (config?.cutoffMinutes || 30) * 60 * 1000;
+  const teamsOk   = match.teamsConfirmed !== false;
+  const locked    = !teamsOk || match.status !== 'scheduled' || (new Date(match.matchDate) - new Date() < cutoffMs);
   const evaluated = pronostico?.evaluated;
   const pts       = pronostico?.pointsEarned || 0;
+  const isLive    = match.status === 'live';
 
-  const handleToggleExact = () => {
-    if (!showExact) {
-      setLocalWinner(selected || null);
-      // Pre-llenar goles del pronóstico existente para que no se borren al re-abrir
-      if (pronostico?.predictedHome != null) setHomeGoals(String(pronostico.predictedHome));
-      if (pronostico?.predictedAway != null) setAwayGoals(String(pronostico.predictedAway));
-    }
-    setShowExact(s => !s);
-  };
-  const handleGuardarConExacto = () => {
-    if (!localWinner) return;
-    onPronostico(match._id, localWinner, homeGoals !== '' ? Number(homeGoals) : null, awayGoals !== '' ? Number(awayGoals) : null);
-    setShowExact(false);
-  };
+  // Derivar ganador del marcador ingresado (vacío = 0)
+  const h = homeGoals !== '' ? Number(homeGoals) : 0;
+  const a = awayGoals !== '' ? Number(awayGoals) : 0;
+  const derivedWinner = h > a ? 'home' : a > h ? 'away' : 'draw';
 
-  // Auto-deduce el ganador cuando el usuario ingresa el score exacto
-  const deriveWinner = (h, a) => {
-    const hn = Number(h), an = Number(a);
-    if (h === '' || a === '') return;
-    if (hn > an) setLocalWinner('home');
-    else if (an > hn) setLocalWinner('away');
-    else setLocalWinner('draw');
-  };
-  const handleHomeChange = (val) => { setHomeGoals(val); deriveWinner(val, awayGoals); };
-  const handleAwayChange = (val) => { setAwayGoals(val); deriveWinner(homeGoals, val); };
+  const hasPrev    = pronostico?.predictedHome != null;
+  // Si el usuario cambió algún número respecto al guardado → mostrar GUARDAR
+  const isModified = hasPrev
+    ? (homeGoals !== String(pronostico.predictedHome) || awayGoals !== String(pronostico.predictedAway))
+    : true;
 
-  const btnBg = (val) => {
-    const isSelected = showExact ? localWinner === val : selected === val;
-    if (!isSelected) return '#141414';
-    if (evaluated) return pts > 0 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.08)';
-    return 'rgba(232,184,75,0.12)';
-  };
-  const btnColor = (val) => {
-    const isSelected = showExact ? localWinner === val : selected === val;
-    if (!isSelected) return '#333';
-    if (evaluated) return pts > 0 ? '#22c55e' : '#ef4444';
-    return '#E8B84B';
-  };
-  const btnBorder = (val) => {
-    const isSelected = showExact ? localWinner === val : selected === val;
-    if (!isSelected) return '1px solid #1c1c1c';
-    if (evaluated) return pts > 0 ? '1px solid rgba(34,197,94,0.3)' : '1px solid rgba(239,68,68,0.2)';
-    return '1px solid rgba(232,184,75,0.3)';
+  const canSave = !locked && !saving;
+
+  const handleSave = () => {
+    if (!canSave) return;
+    onPronostico(match._id, derivedWinner, h, a);
   };
 
-  const isLive = match.status === 'live';
+  // Colores del pronóstico guardado
+  const savedWinner = pronostico?.predictedWinner;
+  const statusColor = evaluated
+    ? (pts > 0 ? '#22c55e' : '#ef4444')
+    : '#E8B84B';
+  const statusBg = evaluated
+    ? (pts > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.06)')
+    : 'rgba(232,184,75,0.06)';
 
   return (
-    <div style={{ background: '#101010', border: `1px solid ${isLive ? 'rgba(232,184,75,0.3)' : '#1c1c1c'}`, borderRadius: 14, padding: '12px 14px', marginBottom: 6 }}>
-      {/* Header de la card */}
+    <div style={{
+      background: '#101010',
+      border: `1px solid ${isLive ? 'rgba(232,184,75,0.3)' : '#1c1c1c'}`,
+      borderRadius: 14, padding: '12px 14px', marginBottom: 6,
+    }}>
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <span style={{ fontSize: 10, color: '#333' }}>
+        <span style={{ fontSize: 10, color: '#444' }}>
           {fmtDate(match.matchDate)} · {fmtTime(match.matchDate)}
         </span>
         <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-          {isLive && <span style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontSize: 9, padding: '2px 7px', borderRadius: 99, fontWeight: 700, letterSpacing: '0.06em' }}>EN VIVO</span>}
-          {locked && !isLive && !evaluated && <Lock size={10} color="#252525" />}
-          {evaluated && pts > 0 && <span style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', fontSize: 10, padding: '2px 8px', borderRadius: 99, fontWeight: 700 }}>+{pts} ✓</span>}
-          {evaluated && pts === 0 && <span style={{ background: '#141414', color: '#333', fontSize: 10, padding: '2px 8px', borderRadius: 99 }}>0 pts</span>}
+          {isLive && (
+            <span style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontSize: 9, padding: '2px 7px', borderRadius: 99, fontWeight: 700, letterSpacing: '0.06em' }}>
+              EN VIVO
+            </span>
+          )}
+          {!isLive && locked && !evaluated && <Lock size={10} color="#252525" />}
+          {evaluated && pts > 0 && (
+            <span style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', fontSize: 10, padding: '2px 8px', borderRadius: 99, fontWeight: 700 }}>
+              +{pts} ✓
+            </span>
+          )}
+          {evaluated && pts === 0 && (
+            <span style={{ background: '#141414', color: '#444', fontSize: 10, padding: '2px 8px', borderRadius: 99 }}>
+              0 pts
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Equipos */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        {/* Logo local */}
-        <div style={{ width: 28, height: 28, flexShrink: 0 }}>
-          {match.homeLogo
-            ? <img src={match.homeLogo} alt={match.homeTeam} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-            : <div style={{ width: 28, height: 28, background: '#1a1a1a', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#444' }}>{initials(match.homeTeam)}</div>
-          }
+      {/* Equipos + marcador */}
+      {!teamsOk ? (
+        <div style={{ background: '#0f0f0f', border: '1px solid #1e1e1e', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontSize: 18, flexShrink: 0 }}>⏳</div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#555', lineHeight: 1.2 }}>Equipos por confirmar</div>
+            <div style={{ fontSize: 10, color: '#333', marginTop: 2, lineHeight: 1.4 }}>Los pronósticos se habilitan cuando se definan los clasificados</div>
+          </div>
         </div>
-        <span style={{ flex: 1, fontSize: 13, fontWeight: 700, textAlign: 'right', lineHeight: 1.2 }}>{match.homeTeam}</span>
-        <span style={{ fontSize: match.status === 'finished' ? 15 : 12, fontWeight: 900, color: match.status === 'finished' ? '#E8B84B' : '#1c1c1c', minWidth: 44, textAlign: 'center', fontFamily: match.status === 'finished' ? 'Bebas Neue, sans-serif' : 'inherit', letterSpacing: match.status === 'finished' ? 1 : 0 }}>
-          {match.status === 'finished'
-            ? (match.homeScore !== null && match.awayScore !== null
-                ? `${match.homeScore}—${match.awayScore}`
-                : 'FIN')
-            : match.status === 'live'
-              ? '🔴'
-              : 'vs'}
-        </span>
-        <span style={{ flex: 1, fontSize: 13, fontWeight: 700, lineHeight: 1.2 }}>{match.awayTeam}</span>
-        <div style={{ width: 28, height: 28, flexShrink: 0 }}>
-          {match.awayLogo
-            ? <img src={match.awayLogo} alt={match.awayTeam} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-            : <div style={{ width: 28, height: 28, background: '#1a1a1a', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#444' }}>{initials(match.awayTeam)}</div>
-          }
-        </div>
-      </div>
-
-      {/* Botones pronóstico */}
-      <div style={{ display: 'flex', gap: 5 }}>
-        {['home', 'draw', 'away'].map(opt => (
-          <button key={opt}
-            disabled={locked || saving}
-            onClick={() => !locked && (showExact ? setLocalWinner(opt) : onPronostico(match._id, opt))}
-            style={{ flex: opt === 'draw' ? 0.8 : 1, padding: '9px 4px', border: btnBorder(opt), borderRadius: 8, cursor: locked ? 'default' : 'pointer', fontWeight: 700, fontSize: 11, lineHeight: 1.3, textAlign: 'center', background: btnBg(opt), color: btnColor(opt), opacity: locked && (showExact ? localWinner !== opt : selected !== opt) ? 0.3 : 1, transition: 'all 0.15s' }}>
-            {opt === 'home' ? <>{match.homeTeam.split(' ')[0]}<br/>gana</> : opt === 'draw' ? 'Empate' : <>{match.awayTeam.split(' ')[0]}<br/>gana</>}
-          </button>
-        ))}
-      </div>
-
-      {/* Marcador exacto */}
-      {!locked && (
+      ) : (
         <>
-          <button onClick={handleToggleExact}
-            style={{ width: '100%', background: 'none', border: '1px solid #181818', borderRadius: 8, padding: '6px', fontSize: 10, color: '#2a2a2a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 7 }}>
-            <Star size={9} color="#E8B84B" fill={showExact ? "#E8B84B" : "none"} />
-            {showExact ? 'Ocultar marcador exacto' : `Marcador exacto (+${config?.pointsExact || 5} pts extra)`}
-          </button>
-          {showExact && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 8 }}>
-                <input type="number" min={0} max={20} value={homeGoals} onChange={e => handleHomeChange(e.target.value)} placeholder="0"
-                  style={{ width: 52, textAlign: 'center', background: '#141414', border: '1px solid #1c1c1c', borderRadius: 8, color: '#fff', padding: 8, fontSize: 18, outline: 'none' }} />
-                <span style={{ color: '#1c1c1c', fontWeight: 900, fontSize: 18 }}>—</span>
-                <input type="number" min={0} max={20} value={awayGoals} onChange={e => handleAwayChange(e.target.value)} placeholder="0"
-                  style={{ width: 52, textAlign: 'center', background: '#141414', border: '1px solid #1c1c1c', borderRadius: 8, color: '#fff', padding: 8, fontSize: 18, outline: 'none' }} />
+          {/* Fila de equipos y marcador oficial (si terminó) o inputs */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+            {/* Equipo local */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+              <div style={{ width: 28, height: 28, flexShrink: 0 }}>
+                {match.homeLogo
+                  ? <img src={match.homeLogo} alt={match.homeTeam} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  : <div style={{ width: 28, height: 28, background: '#1a1a1a', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#444' }}>{initials(match.homeTeam)}</div>
+                }
               </div>
-              <button onClick={handleGuardarConExacto} disabled={!localWinner || saving}
-                style={{ width: '100%', background: localWinner ? '#E8B84B' : '#141414', color: localWinner ? '#000' : '#333', border: 'none', borderRadius: 8, padding: 10, fontFamily: 'Bebas Neue, sans-serif', fontSize: 15, letterSpacing: 1, cursor: localWinner ? 'pointer' : 'not-allowed' }}>
-                {saving ? 'GUARDANDO...' : localWinner ? '✓ GUARDAR CON MARCADOR' : 'SELECCIONÁ UN GANADOR'}
+              <span style={{ fontSize: 11, fontWeight: 700, textAlign: 'center', lineHeight: 1.2, color: '#fff' }}>{match.homeTeam}</span>
+            </div>
+
+            {/* Centro: marcador oficial o inputs */}
+            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, minWidth: 100, justifyContent: 'center' }}>
+              {match.status === 'finished' ? (
+                /* Resultado final */
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 26, color: '#E8B84B', letterSpacing: 2 }}>
+                    {match.homeScore ?? '?'} — {match.awayScore ?? '?'}
+                  </div>
+                  <div style={{ fontSize: 9, color: '#333', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Final</div>
+                </div>
+              ) : match.status === 'live' ? (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, color: '#ef4444', letterSpacing: 2 }}>
+                    {match.homeScore ?? 0} — {match.awayScore ?? 0}
+                  </div>
+                  <div style={{ fontSize: 9, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.06em' }}>En vivo</div>
+                </div>
+              ) : locked ? (
+                /* Bloqueado — mostrar pronóstico si existe, si no guiones */
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, color: hasPrev ? '#E8B84B' : '#252525', letterSpacing: 2 }}>
+                    {hasPrev ? `${pronostico.predictedHome} — ${pronostico.predictedAway}` : '— vs —'}
+                  </div>
+                  {!hasPrev && <div style={{ fontSize: 9, color: '#333', marginTop: 2 }}>sin pronóstico</div>}
+                </div>
+              ) : (
+                /* Inputs editables */
+                <>
+                  <input
+                    type="number" min={0} max={20}
+                    value={homeGoals}
+                    onChange={e => setHomeGoals(e.target.value.replace(/\D/g, ''))}
+                    placeholder="0"
+                    style={{
+                      width: 44, textAlign: 'center', background: '#141414',
+                      border: `1px solid ${homeGoals !== '' ? '#E8B84B44' : '#1c1c1c'}`,
+                      borderRadius: 8, color: '#fff', padding: '8px 4px', fontSize: 22,
+                      fontFamily: 'Bebas Neue, sans-serif', outline: 'none',
+                      WebkitAppearance: 'none', MozAppearance: 'textfield',
+                    }}
+                  />
+                  <span style={{ color: '#252525', fontWeight: 900, fontSize: 18, userSelect: 'none' }}>—</span>
+                  <input
+                    type="number" min={0} max={20}
+                    value={awayGoals}
+                    onChange={e => setAwayGoals(e.target.value.replace(/\D/g, ''))}
+                    placeholder="0"
+                    style={{
+                      width: 44, textAlign: 'center', background: '#141414',
+                      border: `1px solid ${awayGoals !== '' ? '#E8B84B44' : '#1c1c1c'}`,
+                      borderRadius: 8, color: '#fff', padding: '8px 4px', fontSize: 22,
+                      fontFamily: 'Bebas Neue, sans-serif', outline: 'none',
+                      WebkitAppearance: 'none', MozAppearance: 'textfield',
+                    }}
+                  />
+                </>
+              )}
+            </div>
+
+            {/* Equipo visitante */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+              <div style={{ width: 28, height: 28, flexShrink: 0 }}>
+                {match.awayLogo
+                  ? <img src={match.awayLogo} alt={match.awayTeam} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  : <div style={{ width: 28, height: 28, background: '#1a1a1a', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#444' }}>{initials(match.awayTeam)}</div>
+                }
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, textAlign: 'center', lineHeight: 1.2, color: '#fff' }}>{match.awayTeam}</span>
+            </div>
+          </div>
+
+          {/* Botón guardar o estado guardado */}
+          {!locked && (
+            hasPrev && !isModified ? (
+              /* ── Estado: guardado sin cambios ── */
+              <div style={{
+                width: '100%', background: 'rgba(34,197,94,0.10)',
+                border: '1px solid rgba(34,197,94,0.25)',
+                borderRadius: 10, padding: '10px 0',
+                fontFamily: 'Bebas Neue, sans-serif', fontSize: 15, letterSpacing: 1,
+                color: '#22c55e',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}>
+                ✓ GUARDADO —{' '}
+                {savedWinner === 'home'
+                  ? `GANA ${match.homeTeam.split(' ')[0].toUpperCase()}`
+                  : savedWinner === 'away'
+                    ? `GANA ${match.awayTeam.split(' ')[0].toUpperCase()}`
+                    : 'EMPATE'}
+              </div>
+            ) : (
+              /* ── Estado: primer guardado o resultado modificado ── */
+              <button
+                onClick={handleSave}
+                disabled={!canSave}
+                style={{
+                  width: '100%',
+                  background: canSave ? '#E8B84B' : '#141414',
+                  color: canSave ? '#000' : '#333',
+                  border: `1px solid ${canSave ? '#E8B84B' : '#1c1c1c'}`,
+                  borderRadius: 10, padding: '10px 0',
+                  fontFamily: 'Bebas Neue, sans-serif', fontSize: 15, letterSpacing: 1,
+                  cursor: canSave ? 'pointer' : 'not-allowed',
+                  transition: 'all 0.15s',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}
+              >
+                {saving ? 'GUARDANDO...' : (
+                  derivedWinner === 'home'
+                    ? `✓ GUARDAR — GANA ${match.homeTeam.split(' ')[0].toUpperCase()}`
+                    : derivedWinner === 'away'
+                      ? `✓ GUARDAR — GANA ${match.awayTeam.split(' ')[0].toUpperCase()}`
+                      : '✓ GUARDAR — EMPATE'
+                )}
               </button>
+            )
+          )}
+
+          {/* Pronóstico guardado (bloqueado o evaluado) */}
+          {(locked || evaluated) && hasPrev && (
+            <div style={{
+              marginTop: 6, background: statusBg,
+              border: `1px solid ${statusColor}22`,
+              borderRadius: 8, padding: '7px 12px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span style={{ fontSize: 11, color: '#555' }}>Tu pronóstico</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: statusColor }}>
+                {pronostico.predictedHome} — {pronostico.predictedAway}
+                {' · '}
+                {savedWinner === 'home'
+                  ? `Gana ${match.homeTeam.split(' ')[0]}`
+                  : savedWinner === 'away'
+                    ? `Gana ${match.awayTeam.split(' ')[0]}`
+                    : 'Empate'}
+              </span>
             </div>
           )}
         </>
-      )}
-
-      {/* Pronóstico actual sin evaluar */}
-      {selected && !evaluated && (
-        <div style={{ marginTop: 7, fontSize: 10, color: '#252525', textAlign: 'center' }}>
-          Tu pronóstico: <span style={{ color: '#E8B84B' }}>
-            {selected === 'home' ? `${match.homeTeam} gana` : selected === 'away' ? `${match.awayTeam} gana` : 'Empate'}
-            {pronostico?.predictedHome != null ? ` · ${pronostico.predictedHome}-${pronostico.predictedAway}` : ''}
-          </span>
-        </div>
       )}
     </div>
   );

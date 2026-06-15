@@ -152,40 +152,39 @@ export default function Coupons() {
   };
 
   const handleCreateAdmin = async () => {
-    if (!adminForm.code) { toast.error('Código requerido'); return; }
-    // Necesitamos un owner para el modelo — usar primer cliente o cliente "admin"
-    const owner = clients[0];
-    if (!owner) { toast.error('No hay clientes en el sistema'); return; }
+    if (!adminForm.code.trim()) { toast.error('Código requerido'); return; }
     try {
       const res = await API.post('/coupons/admin', {
-        ...adminForm,
-        ownerId: owner._id,
-        applicableProduct: adminForm.applicableProduct || null,
+        code:                 adminForm.code.trim(),
+        discountForUser:      adminForm.discountForUser,
+        label:                adminForm.label || 'Admin',
+        applicableProduct:    adminForm.applicableProduct    || null,
         applicableProductName: adminForm.applicableProduct ? getProductName(adminForm.applicableProduct) : null,
-        expiresAt: adminForm.expiresAt || null
+        expiresAt:            adminForm.expiresAt || null,
       });
       setCoupons(prev => [res.data, ...prev]);
       setShowAdminModal(false);
-      toast.success('Cupón admin creado');
-    } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
+      setAdminForm({ code: '', discountForUser: 0, label: 'Admin', applicableProduct: '', applicableProductName: '', expiresAt: '' });
+      toast.success(`Cupón ${res.data.code} creado`);
+    } catch (e) { toast.error(e.response?.data?.message || 'Error al crear el cupón'); }
   };
 
   const handleCreateSingle = async () => {
-    if (!singleForm.code) { toast.error('Código requerido'); return; }
-    const owner = clients[0];
-    if (!owner) { toast.error('No hay clientes'); return; }
+    if (!singleForm.code.trim()) { toast.error('Código requerido'); return; }
     try {
-      const res = await API.post('/coupons/single', {
-        ...singleForm,
-        ownerId: owner._id,
-        applicableProduct: singleForm.applicableProduct || null,
+      const res = await API.post('/coupons/single-use', {   // ← era '/coupons/single' (404)
+        code:                 singleForm.code.trim(),
+        discountForUser:      singleForm.discountForUser,
+        label:                singleForm.label || 'Promo',
+        applicableProduct:    singleForm.applicableProduct    || null,
         applicableProductName: singleForm.applicableProduct ? getProductName(singleForm.applicableProduct) : null,
-        expiresAt: singleForm.expiresAt || null
+        expiresAt:            singleForm.expiresAt || null,
       });
       setCoupons(prev => [res.data, ...prev]);
       setShowSingleModal(false);
-      toast.success('Cupón creado');
-    } catch (e) { toast.error(e.response?.data?.message || 'Error'); }
+      setSingleForm({ code: '', discountForUser: 10, label: 'Promo', applicableProduct: '', applicableProductName: '', expiresAt: '' });
+      toast.success(`Cupón ${res.data.code} creado`);
+    } catch (e) { toast.error(e.response?.data?.message || 'Error al crear el cupón'); }
   };
 
   const ProductSelector = ({ value, onChange }) => (
