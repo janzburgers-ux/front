@@ -42,6 +42,19 @@ export default function Prode() {
   const [predsData,     setPredsData    ] = useState([]);
   const [predsLoading,  setPredsLoading ] = useState(false);
 
+  // ── Notificaciones manuales ──────────────────────────────────────────────────
+  const [notifSegmento,   setNotifSegmento  ] = useState('todos');
+  const [notifPeriodo,    setNotifPeriodo   ] = useState('ultimas24h');
+  const [notifSoloConPts, setNotifSoloConPts] = useState(false);
+  const [notifMsgCustom,  setNotifMsgCustom ] = useState('');
+  const [notifUsarCustom, setNotifUsarCustom] = useState(false);
+  const [notifPreview,    setNotifPreview   ] = useState(null);   // { total, conWa, sinWa, destinatarios }
+  const [notifLoading,    setNotifLoading   ] = useState(false);
+  const [notifSending,    setNotifSending   ] = useState(false);
+  const [notifResult,     setNotifResult    ] = useState(null);   // resultado del envío
+  const [notifSelected,   setNotifSelected  ] = useState([]);     // clientIds seleccionados para envío selectivo
+  const [notifExpandMsg,  setNotifExpandMsg ] = useState(null);   // clientId con preview de msg expandido
+
   // ── Reset de datos de prueba ─────────────────────────────────────────────────
   const [resetClientId,   setResetClientId  ] = useState('');
   const [resetLoading,    setResetLoading   ] = useState(false);
@@ -60,7 +73,7 @@ export default function Prode() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [r, f, s, c, b, p] = await Promise.all([
+      const [r, f, s, c, b, p] = await Promise.allSettled([
         API.get('/prode/ranking'),
         API.get('/prode/fixture'),
         API.get('/prode/stats'),
@@ -68,14 +81,32 @@ export default function Prode() {
         API.get('/prode/bonificaciones'),
         API.get('/products'),
       ]);
-      setRanking(r.data);
-      setFixture(f.data);
-      setStats(s.data);
-      setConfig(c.data);
-      setCfgForm(c.data);
-      setBonificaciones(b.data);
-      setProducts(p.data.filter(p => p.active));
-    } catch { toast.error('Error cargando datos del prode'); }
+
+      if (r.status === 'fulfilled') setRanking(r.value.data);
+      else console.error('❌ /prode/ranking falló:', r.reason?.response?.data || r.reason?.message);
+
+      if (f.status === 'fulfilled') setFixture(f.value.data);
+      else console.error('❌ /prode/fixture falló:', f.reason?.response?.data || f.reason?.message);
+
+      if (s.status === 'fulfilled') setStats(s.value.data);
+      else console.error('❌ /prode/stats falló:', s.reason?.response?.data || s.reason?.message);
+
+      if (c.status === 'fulfilled') { setConfig(c.value.data); setCfgForm(c.value.data); }
+      else console.error('❌ /prode/config falló:', c.reason?.response?.data || c.reason?.message);
+
+      if (b.status === 'fulfilled') setBonificaciones(b.value.data);
+      else console.error('❌ /prode/bonificaciones falló:', b.reason?.response?.data || b.reason?.message);
+
+      if (p.status === 'fulfilled') setProducts(p.value.data.filter(x => x.active));
+      else console.error('❌ /products falló:', p.reason?.response?.data || p.reason?.message);
+
+      // Sólo mostrar error si lo crítico (fixture) no cargó
+      if (f.status === 'rejected') toast.error('Error cargando el fixture — revisá la consola para más info');
+
+    } catch (err) {
+      console.error('❌ Error inesperado en load:', err);
+      toast.error('Error cargando datos del prode');
+    }
     finally { setLoading(false); }
   }, []);
 
@@ -400,6 +431,7 @@ export default function Prode() {
             { id: 'premios',       label: '🎁 Premios'       },
             { id: 'bonificaciones',label: '🎁 Bonif. (legacy)' },
             { id: 'terminos',      label: '📋 Términos & Premios' },
+            { id: 'mensajes',      label: '📲 Mensajes'           },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               background: 'none', border: 'none', cursor: 'pointer',
@@ -1073,6 +1105,234 @@ export default function Prode() {
             </div>
           </div>
         )}
+
+
+        {/* TAB: Mensajes */}
+        {tab === 'mensajes' && (() => {
+          const SEGMENTOS = [
+            { id: 'todos',      label: 'Todos',       emoji: '👥' },
+            { id: 'invitado',   label: 'Invitados',   emoji: '🎟️' },
+            { id: 'cliente',    label: 'Clientes',    emoji: '🍔' },
+            { id: 'competidor', label: 'Competidores',emoji: '🏆' },
+          ];
+          const PERIODOS = [
+            { id: 'ultimas24h', label: 'Últimas 24 hs' },
+            { id: 'ultimas48h', label: 'Últimas 48 hs' },
+            { id: 'semana',     label: 'Última semana' },
+            { id: 'todo',       label: 'Todo el prode' },
+          ];
+
+          const handlePreview = async () => {
+            setNotifLoading(true);
+            setNotifResult(null);
+            setNotifSelected([]);
+            try {
+              const params = new URLSearchParams({
+                segmento:      notifSegmento,
+                periodo:       notifPeriodo,
+                soloConPuntos: notifSoloConPts ? '1' : '0',
+              });
+              const { data } = await API.get(`/prode/notificaciones/preview?${params}`);
+              setNotifPreview(data);
+            } catch { toast.error('Error cargando preview'); }
+            finally { setNotifLoading(false); }
+          };
+
+          const handleEnviar = async () => {
+            if (!notifPreview) return;
+            const destinos = notifSelected.length > 0 ? notifSelected : null;
+            const cantidad = destinos ? destinos.length : notifPreview.conWa;
+            if (!window.confirm(`¿Enviar mensaje a ${cantidad} participante${cantidad !== 1 ? 's' : ''} por WhatsApp?`)) return;
+
+            setNotifSending(true);
+            setNotifResult(null);
+            try {
+              const { data } = await API.post('/prode/notificaciones/enviar', {
+                segmento:      notifSegmento,
+                periodo:       notifPeriodo,
+                soloConPuntos: notifSoloConPts,
+                mensajeCustom: notifUsarCustom && notifMsgCustom.trim() ? notifMsgCustom : null,
+                clientIds:     destinos,
+              });
+              setNotifResult(data);
+              toast.success(`✅ ${data.sent} mensaje${data.sent !== 1 ? 's' : ''} enviado${data.sent !== 1 ? 's' : ''}`);
+            } catch { toast.error('Error enviando mensajes'); }
+            finally { setNotifSending(false); }
+          };
+
+          const toggleSelected = (cid) => {
+            setNotifSelected(prev =>
+              prev.includes(cid) ? prev.filter(x => x !== cid) : [...prev, cid]
+            );
+          };
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+              {/* Filtros */}
+              <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  📲 Envío manual de mensajes
+                </h3>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                  {/* Segmento */}
+                  <div>
+                    <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 8 }}>Segmento</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {SEGMENTOS.map(s => (
+                        <button key={s.id} onClick={() => { setNotifSegmento(s.id); setNotifPreview(null); }}
+                          style={{ padding: '5px 12px', borderRadius: 99, fontSize: 12, border: '1px solid',
+                            borderColor: notifSegmento === s.id ? 'var(--gold)' : 'var(--border)',
+                            background:  notifSegmento === s.id ? 'rgba(232,184,75,0.1)' : 'transparent',
+                            color:       notifSegmento === s.id ? 'var(--gold)' : 'var(--gray)',
+                            cursor: 'pointer' }}>
+                          {s.emoji} {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Período */}
+                  <div>
+                    <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 8 }}>Período de resultados</label>
+                    <select value={notifPeriodo}
+                      onChange={e => { setNotifPeriodo(e.target.value); setNotifPreview(null); }}
+                      style={{ width: '100%' }}>
+                      {PERIODOS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Opciones adicionales */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={notifSoloConPts}
+                      onChange={e => { setNotifSoloConPts(e.target.checked); setNotifPreview(null); }} />
+                    Solo participantes con puntos
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={notifUsarCustom}
+                      onChange={e => setNotifUsarCustom(e.target.checked)} />
+                    Usar mensaje personalizado
+                  </label>
+                </div>
+
+                {/* Mensaje personalizado */}
+                {notifUsarCustom && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 6 }}>
+                      Mensaje personalizado — usá <code style={{ background: 'var(--border)', padding: '1px 5px', borderRadius: 4 }}>{'{{nombre}}'}</code> para insertar el nombre
+                    </label>
+                    <textarea
+                      value={notifMsgCustom}
+                      onChange={e => setNotifMsgCustom(e.target.value)}
+                      rows={5}
+                      placeholder={"🏆 *Prode Janz*\n\n¡Hola {{nombre}}! Recordá que podés ver tu ranking en el prode.\n\n_Janz Burgers_ 🍔⚽"}
+                      style={{ width: '100%', resize: 'vertical', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6 }}
+                    />
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <button className="btn btn-secondary" onClick={handlePreview} disabled={notifLoading}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {notifLoading ? '⏳ Cargando...' : '👁 Ver destinatarios'}
+                  </button>
+                  {notifPreview && (
+                    <button className="btn btn-primary" onClick={handleEnviar} disabled={notifSending}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {notifSending
+                        ? '⏳ Enviando...'
+                        : `📲 Enviar a ${notifSelected.length > 0 ? notifSelected.length + ' seleccionados' : notifPreview.conWa + ' con WA'}`}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Preview de destinatarios */}
+              {notifPreview && (
+                <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700 }}>
+                      Destinatarios — {notifPreview.total} total
+                    </h3>
+                    <div style={{ display: 'flex', gap: 10, fontSize: 12 }}>
+                      <span style={{ color: '#4ade80' }}>✅ {notifPreview.conWa} con WA</span>
+                      {notifPreview.sinWa > 0 && <span style={{ color: 'var(--gray)' }}>⚠️ {notifPreview.sinWa} sin WA</span>}
+                      {notifSelected.length > 0 && (
+                        <button onClick={() => setNotifSelected([])}
+                          style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontSize: 12 }}>
+                          Limpiar selección ({notifSelected.length})
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {notifPreview.destinatarios.map(d => (
+                      <div key={d.clientId}
+                        style={{ background: 'var(--bg)', border: `1px solid ${notifSelected.includes(d.clientId) ? 'var(--gold)' : 'var(--border)'}`,
+                          borderRadius: 10, padding: '10px 14px', opacity: d.sinWa ? 0.45 : 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <input type="checkbox" disabled={d.sinWa}
+                            checked={notifSelected.includes(d.clientId)}
+                            onChange={() => toggleSelected(d.clientId)}
+                            style={{ cursor: d.sinWa ? 'default' : 'pointer', flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontWeight: 600, fontSize: 13 }}>{d.nombre}</span>
+                              <span style={{ fontSize: 11, background: 'var(--border)', borderRadius: 99, padding: '1px 7px', color: 'var(--gray)' }}>
+                                {d.categoria}
+                              </span>
+                              <span style={{ fontSize: 12, color: 'var(--gold)' }}>{d.puntos} pts</span>
+                              {d.partidos > 0 && <span style={{ fontSize: 11, color: 'var(--gray)' }}>{d.partidos} partido{d.partidos !== 1 ? 's' : ''}</span>}
+                              {d.sinWa && <span style={{ fontSize: 11, color: '#f87171' }}>sin WA</span>}
+                            </div>
+                            {d.whatsapp && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{d.whatsapp}</div>}
+                          </div>
+                          {!notifUsarCustom && (
+                            <button onClick={() => setNotifExpandMsg(notifExpandMsg === d.clientId ? null : d.clientId)}
+                              style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px',
+                                fontSize: 11, color: 'var(--gray)', cursor: 'pointer', flexShrink: 0 }}>
+                              {notifExpandMsg === d.clientId ? '▲ ocultar' : '👁 ver msg'}
+                            </button>
+                          )}
+                        </div>
+                        {/* Preview del mensaje individual */}
+                        {notifExpandMsg === d.clientId && (
+                          <pre style={{ marginTop: 10, background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: 12,
+                            fontSize: 11, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                            color: '#ccc', border: '1px solid var(--border)', fontFamily: 'inherit' }}>
+                            {d.msgPreview}
+                          </pre>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Resultado del envío */}
+              {notifResult && (
+                <div style={{ background: 'var(--card)', border: '1px solid #166534', borderRadius: 12, padding: 20 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, color: '#4ade80' }}>
+                    ✅ Envío completado
+                  </h3>
+                  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 13, marginBottom: 14 }}>
+                    <span>📲 Enviados: <strong>{notifResult.sent}</strong></span>
+                    <span style={{ color: 'var(--gray)' }}>⏭ Saltados: <strong>{notifResult.skipped}</strong></span>
+                    {notifResult.errors > 0 && <span style={{ color: '#f87171' }}>❌ Errores: <strong>{notifResult.errors}</strong></span>}
+                  </div>
+                  {notifResult.detalle?.filter(d => d.estado === 'error').map((d, i) => (
+                    <div key={i} style={{ fontSize: 12, color: '#f87171' }}>⚠️ {d.nombre}: {d.error}</div>
+                  ))}
+                </div>
+              )}
+
+            </div>
+          );
+        })()}
 
       </div>
 

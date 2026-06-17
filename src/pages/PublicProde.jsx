@@ -498,9 +498,9 @@ export default function PublicProde() {
       {/* Ranking preview */}
       {ranking.length > 0 && (
         <div style={{ padding: '20px 20px 40px', maxWidth: 400, margin: '0 auto' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10, textAlign: 'center' }}>Top 5 actual</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10, textAlign: 'center' }}>Top 10 actual</div>
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, overflow: 'hidden' }}>
-            {ranking.slice(0, 5).map((r, i) => (
+            {ranking.slice(0, 10).map((r, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: i < ranking.length - 1 ? `1px solid ${C.border}` : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span style={{ fontSize: 15, minWidth: 22 }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}°`}</span>
@@ -625,6 +625,16 @@ export default function PublicProde() {
             <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, color: C.yellow, lineHeight: 1, letterSpacing: 1 }}>{puntos.total}</div>
             <div style={{ fontSize: 10, color: C.text3 }}>pts</div>
           </div>
+          {/* Botón descargar PDF */}
+          <a
+            href={`${API.defaults.baseURL}/prode/pdf/${clientId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Descargar mis pronósticos en PDF"
+            style={{ background: 'rgba(232,184,75,0.08)', border: `1px solid rgba(232,184,75,0.35)`, color: C.yellow, borderRadius: 8, padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}
+          >
+          Descargá PRODE PDF
+          </a>
           <button onClick={handleLogout} style={{ background: 'none', border: `1px solid ${C.border2}`, color: C.text3, borderRadius: 8, padding: '5px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
             <LogOut size={13} />
           </button>
@@ -736,9 +746,9 @@ export default function PublicProde() {
             {ranking.length === 0 ? (
               <div style={{ textAlign: 'center', color: C.text3, padding: 40 }}>Aún no hay participantes.</div>
             ) : (() => {
-              const top5      = ranking.slice(0, 5);
+              const top10     = ranking.slice(0, 10);
               const myIndex   = ranking.findIndex(r => String(r._id) === String(clientId));
-              const inTop5    = myIndex !== -1 && myIndex < 5;
+              const inTop10    = myIndex !== -1 && myIndex < 10;
               const myEntry   = myIndex !== -1 ? ranking[myIndex] : null;
 
               const renderRow = (r, i, forceHighlight = false) => {
@@ -763,10 +773,10 @@ export default function PublicProde() {
 
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {top5.map((r, i) => renderRow(r, i))}
+                  {top10.map((r, i) => renderRow(r, i))}
 
-                  {/* Si el cliente existe y está fuera del top 5, mostrarlo separado */}
-                  {!inTop5 && myEntry && (
+                  {/* Si el cliente existe y está fuera del top 10, mostrarlo separado */}
+                  {!inTop10 && myEntry && (
                     <>
                       <div style={{ textAlign: 'center', color: C.text3, fontSize: 18, letterSpacing: 2, padding: '2px 0' }}>···</div>
                       {renderRow(myEntry, myIndex)}
@@ -801,7 +811,7 @@ export default function PublicProde() {
               </div>
             </div>
 
-            {/* Posición si está en top5 */}
+            {/* Posición si está en top10 */}
             {posicion > 0 && (
               <div style={{ background: C.yellowBg, border: `1px solid ${C.yellow}33`, borderRadius: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                 <div style={{ fontSize: 13, color: C.text2 }}>Tu posición actual</div>
