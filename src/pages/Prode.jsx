@@ -1169,9 +1169,12 @@ export default function Prode() {
                 periodo:       notifPeriodo,
                 soloConPuntos: notifSoloConPts ? '1' : '0',
               });
-              const { data } = await API.get(`/prode/notificaciones/preview?${params}`);
+              const { data } = await API.get(`/prode/notificaciones/preview?${params}`, { timeout: 30000 });
               setNotifPreview(data);
-            } catch { toast.error('Error cargando preview'); }
+            } catch (e) {
+              console.error('❌ /prode/notificaciones/preview falló:', e.response?.data || e.message);
+              toast.error('Error cargando preview');
+            }
             finally { setNotifLoading(false); }
           };
 
@@ -1190,10 +1193,13 @@ export default function Prode() {
                 soloConPuntos: notifSoloConPts,
                 mensajeCustom: notifUsarCustom && notifMsgCustom.trim() ? notifMsgCustom : null,
                 clientIds:     destinos,
-              });
+              }, { timeout: 60000 });
               setNotifResult(data);
               toast.success(`✅ ${data.sent} mensaje${data.sent !== 1 ? 's' : ''} enviado${data.sent !== 1 ? 's' : ''}`);
-            } catch { toast.error('Error enviando mensajes'); }
+            } catch (e) {
+              console.error('❌ /prode/notificaciones/enviar falló:', e.response?.data || e.message);
+              toast.error('Error enviando mensajes');
+            }
             finally { setNotifSending(false); }
           };
 
