@@ -287,6 +287,19 @@ export default function Prode() {
     finally { setNuclearLoading(false); }
   };
 
+  const [reEvalLoading, setReEvalLoading] = useState(false);
+  const handleReEvaluar = async () => {
+    if (!window.confirm('¿Re-evaluar TODOS los partidos terminados desde cero? Esto corrige puntos mal calculados.')) return;
+    setReEvalLoading(true);
+    try {
+      const r = await API.post('/prode/evaluar-forzado');
+      toast.success(`✅ ${r.data.message}`);
+      const rankRes = await API.get('/prode/ranking');
+      setRanking(rankRes.data);
+    } catch { toast.error('Error en re-evaluación'); }
+    finally { setReEvalLoading(false); }
+  };
+
   // Agrupar fixture por stage/group
   const fixtureAgrupado = fixture.reduce((acc, m) => {
     const key = m.group || m.stage || 'Fixture';
@@ -1103,6 +1116,30 @@ export default function Prode() {
                 <CheckCircle size={15} /> Guardar términos y premios
               </button>
             </div>
+
+            {/* Herramientas de mantenimiento */}
+            <div style={{ background: 'var(--card)', border: '1px solid #7f1d1d', borderRadius: 12, padding: 20 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, color: '#fca5a5', display: 'flex', alignItems: 'center', gap: 8 }}>
+                ⚙️ Herramientas de mantenimiento
+              </h3>
+              <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 16, lineHeight: 1.6 }}>
+                Acciones para corregir datos. Usá solo si detectás inconsistencias en los puntos.
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleReEvaluar}
+                  disabled={reEvalLoading}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  {reEvalLoading ? '⏳ Procesando...' : '🔄 Re-evaluar todos los partidos (corregir puntos)'}
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 10, lineHeight: 1.5 }}>
+                Re-evaluar: resetea y recalcula los puntos de todos los partidos ya terminados. <b>No borra pronósticos.</b>
+                Necesario si los puntos de algún cliente no coinciden con lo esperado.
+              </div>
+            </div>
           </div>
         )}
 
@@ -1451,6 +1488,16 @@ export default function Prode() {
                   <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>Bloqueo pronósticos (minutos antes del partido)</label>
                   <input type="number" min={0} value={cfgForm.cutoffMinutes || 30}
                     onChange={e => setCfgForm(p => ({ ...p, cutoffMinutes: Number(e.target.value) }))} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>⏰ Hora de envío de reportes diarios (0–23 hs, Argentina)</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="number" min={0} max={23} value={cfgForm.notifHour ?? 9}
+                      onChange={e => setCfgForm(p => ({ ...p, notifHour: Number(e.target.value) }))}
+                      style={{ flex: 1 }} />
+                    <span style={{ color: 'var(--gray)', fontSize: 14, paddingRight: 2 }}>hs</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4, lineHeight: 1.4 }}>Se aplica al reiniciar el servidor. Actualmente: {String(cfgForm.notifHour ?? 9).padStart(2,'0')}:00 hs.</div>
                 </div>
                 <div>
                   <label style={{ fontSize: 12, color: 'var(--gray)', display: 'block', marginBottom: 4 }}>% descuento cupón invitados</label>
