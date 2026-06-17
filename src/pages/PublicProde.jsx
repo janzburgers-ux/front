@@ -183,7 +183,7 @@ export default function PublicProde() {
     }).catch(() => setFase('login'));
   }, []);
 
-  const cargarProde = async (cid) => {
+  const cargarProde = async (cid, { isRetry = false } = {}) => {
     try {
       const [fRes, pRes, ptsRes, rankRes, estRes] = await Promise.allSettled([
         API.get('/prode/fixture'),
@@ -194,8 +194,17 @@ export default function PublicProde() {
       ]);
 
       if (fRes.status === 'rejected') {
-        toast.error('Error cargando el prode');
-        setFase('login');
+        // Esto es un error de red/servidor, NO una sesión inválida — la sesión
+        // guardada en localStorage sigue siendo válida. Nunca mandamos al
+        // usuario de vuelta al login (le pediría el código de nuevo) por un
+        // simple corte de conexión. Reintentamos una vez en silencio y, si
+        // persiste, mostramos una pantalla de error con botón de reintentar
+        // que conserva la sesión.
+        if (!isRetry) {
+          setTimeout(() => cargarProde(cid, { isRetry: true }), 1500);
+          return;
+        }
+        setFase('error_carga');
         return;
       }
 
@@ -221,8 +230,11 @@ export default function PublicProde() {
 
       setFase('prode');
     } catch {
-      toast.error('Error cargando el prode');
-      setFase('login');
+      if (!isRetry) {
+        setTimeout(() => cargarProde(cid, { isRetry: true }), 1500);
+        return;
+      }
+      setFase('error_carga');
     }
   };
 
@@ -366,6 +378,23 @@ export default function PublicProde() {
       <div style={{ fontSize: 48, marginBottom: 16 }}>🏆</div>
       <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 32, color: C.yellow, letterSpacing: 2 }}>PRODE JANZ</div>
       <p style={{ color: C.text2, fontSize: 14, marginTop: 8 }}>El prode todavía no está disponible.</p>
+    </div>
+  );
+
+  // Error de carga transitorio (red/servidor) con sesión ya guardada — NO se
+  // pierde la sesión ni se pide el código de nuevo, solo se reintenta.
+  if (fase === 'error_carga') return (
+    <div style={S.fullCenter}>
+      <div style={{ fontSize: 40, marginBottom: 8 }}>📶</div>
+      <p style={{ color: C.text2, fontSize: 14, textAlign: 'center', maxWidth: 280, lineHeight: 1.5 }}>
+        No pudimos cargar el prode. Revisá tu conexión e intentá de nuevo.
+      </p>
+      <button
+        onClick={() => { setFase('cargando_prode'); cargarProde(clientId); }}
+        style={{ marginTop: 8, background: C.yellow, color: '#000', border: 'none', borderRadius: 12, padding: '12px 28px', fontFamily: 'Bebas Neue, sans-serif', fontSize: 16, letterSpacing: 1, cursor: 'pointer' }}
+      >
+        REINTENTAR
+      </button>
     </div>
   );
 
