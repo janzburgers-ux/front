@@ -660,15 +660,23 @@ export default function PublicProde() {
             <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 22, color: C.yellow, lineHeight: 1, letterSpacing: 1 }}>{puntos.total}</div>
             <div style={{ fontSize: 10, color: C.text3 }}>pts</div>
           </div>
-          {/* Botón descargar PDF */}
+          {/* Botones PDF e imprimir */}
+          <a
+            href={`${API.defaults.baseURL}/prode/pdf/${clientId}?download=1`}
+            download={`prode-janz-${clientId}.pdf`}
+            title="Descargar mis pronósticos en PDF"
+            style={{ background: 'rgba(232,184,75,0.08)', border: `1px solid rgba(232,184,75,0.35)`, color: C.yellow, borderRadius: 8, padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}
+          >
+            📄 Descargar PDF
+          </a>
           <a
             href={`${API.defaults.baseURL}/prode/pdf/${clientId}`}
             target="_blank"
             rel="noopener noreferrer"
-            title="Descargar mis pronósticos en PDF"
-            style={{ background: 'rgba(232,184,75,0.08)', border: `1px solid rgba(232,184,75,0.35)`, color: C.yellow, borderRadius: 8, padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}
+            title="Imprimir mis pronósticos"
+            style={{ background: 'rgba(232,184,75,0.05)', border: `1px solid rgba(232,184,75,0.2)`, color: C.yellow, borderRadius: 8, padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}
           >
-          Descargá PRODE PDF
+            🖨️ Imprimir
           </a>
           <button onClick={handleLogout} style={{ background: 'none', border: `1px solid ${C.border2}`, color: C.text3, borderRadius: 8, padding: '5px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
             <LogOut size={13} />

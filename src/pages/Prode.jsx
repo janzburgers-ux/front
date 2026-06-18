@@ -469,7 +469,7 @@ export default function Prode() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
                   <tr style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
-                    {['#', 'Cliente', 'Pts Pronóst.', 'Pts Bonus', 'Total', 'Categoría', 'Entregas'].map(h => (
+                    {['#', 'Cliente', 'Pts Pronóst.', 'Pts Bonus', 'Total', 'Exactos 🎯', 'Categoría', 'Entregas'].map(h => (
                       <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: 'var(--gray)', fontWeight: 500, fontSize: 12 }}>{h}</th>
                     ))}
                   </tr>
@@ -494,6 +494,11 @@ export default function Prode() {
                       <td style={{ padding: '12px 14px' }}>
                         <span style={{ background: '#713f12', color: '#fde68a', fontSize: 12, padding: '3px 10px', borderRadius: 99, fontWeight: 600 }}>
                           {r.totalPuntos} pts
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                        <span style={{ background: '#1e1b4b', color: '#a78bfa', fontSize: 12, padding: '3px 10px', borderRadius: 99, fontWeight: 600 }}>
+                          {r.marcadoresExactos ?? 0}
                         </span>
                       </td>
                       <td style={{ padding: '12px 14px', fontSize: 13 }}>
@@ -1315,15 +1320,18 @@ export default function Prode() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {notifPreview.destinatarios.map(d => (
                       <div key={d.clientId}
+                        onClick={() => !d.sinWa && toggleSelected(d.clientId)}
                         style={{ background: 'var(--bg)', border: `1px solid ${notifSelected.includes(d.clientId) ? 'var(--gold)' : 'var(--border)'}`,
-                          borderRadius: 10, padding: '10px 14px', opacity: d.sinWa ? 0.45 : 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          borderRadius: 10, padding: '10px 14px', opacity: d.sinWa ? 0.45 : 1,
+                          width: '100%', boxSizing: 'border-box', cursor: d.sinWa ? 'default' : 'pointer' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
                           <input type="checkbox" disabled={d.sinWa}
                             checked={notifSelected.includes(d.clientId)}
                             onChange={() => toggleSelected(d.clientId)}
+                            onClick={e => e.stopPropagation()}
                             style={{ cursor: d.sinWa ? 'default' : 'pointer', flexShrink: 0 }} />
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                               <span style={{ fontWeight: 600, fontSize: 13 }}>{d.nombre}</span>
                               <span style={{ fontSize: 11, background: 'var(--border)', borderRadius: 99, padding: '1px 7px', color: 'var(--gray)' }}>
                                 {d.categoria}
@@ -1335,7 +1343,7 @@ export default function Prode() {
                             {d.whatsapp && <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{d.whatsapp}</div>}
                           </div>
                           {!notifUsarCustom && (
-                            <button onClick={() => setNotifExpandMsg(notifExpandMsg === d.clientId ? null : d.clientId)}
+                            <button onClick={e => { e.stopPropagation(); setNotifExpandMsg(notifExpandMsg === d.clientId ? null : d.clientId); }}
                               style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px',
                                 fontSize: 11, color: 'var(--gray)', cursor: 'pointer', flexShrink: 0 }}>
                               {notifExpandMsg === d.clientId ? '▲ ocultar' : '👁 ver msg'}
