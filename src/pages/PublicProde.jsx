@@ -545,6 +545,20 @@ export default function PublicProde() {
               </div>
             ))}
           </div>
+
+          {/* Botón predicciones públicas */}
+          <a
+            href="/predicciones-publicas"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              marginTop: 14, padding: '11px 0', borderRadius: 12,
+              background: 'rgba(232,184,75,0.08)', border: '1px solid rgba(232,184,75,0.3)',
+              color: '#E8B84B', fontSize: 13, fontWeight: 700, textDecoration: 'none',
+              letterSpacing: '0.03em',
+            }}
+          >
+            👁️ Ver predicciones del Top 10
+          </a>
         </div>
       )}
     </div>
@@ -828,6 +842,24 @@ export default function PublicProde() {
                 </div>
               );
             })()}
+          </div>
+        )}
+
+        {/* Botón predicciones públicas */}
+        {tab === 'ranking' && (
+          <div style={{ padding: '4px 14px 20px' }}>
+            <a
+              href="/predicciones-publicas"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                padding: '11px 0', borderRadius: 12,
+                background: 'rgba(232,184,75,0.08)', border: '1px solid rgba(232,184,75,0.3)',
+                color: '#E8B84B', fontSize: 13, fontWeight: 700, textDecoration: 'none',
+                letterSpacing: '0.03em',
+              }}
+            >
+              👁️ Ver predicciones del Top 10
+            </a>
           </div>
         )}
 
