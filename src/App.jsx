@@ -37,6 +37,7 @@ import PushNotifications from './pages/PushNotifications';
 import PublicReview from './pages/PublicReview';
 import Reviews from './pages/Reviews';
 import Broadcast from './pages/Broadcast';
+import PrediccionesPublicas from './pages/PrediccionesPublicas';
 
 // ✅ SOLO esto
 import { trackPageView } from "./utils/analytics";
@@ -66,6 +67,7 @@ function AppRoutes() {
       <Route path="/" element={<Navigate to="/pedido" replace />} />
       <Route path="/pedido" element={<PublicOrder />} />
       <Route path="/prode-publico" element={<PublicProde />} />
+      <Route path="/predicciones-publicas" element={<PrediccionesPublicas />} />
       <Route path="/resena/:publicCode" element={<PublicReview />} />
 
       {/* Login */}
