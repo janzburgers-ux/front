@@ -3,6 +3,41 @@ import { Trophy, Star, Lock, ChevronDown, ChevronUp, LogOut, Zap, Award, Target 
 import API from '../utils/api';
 import toast from 'react-hot-toast';
 
+// ── Storage helpers: localStorage + cookie como respaldo para Safari/iOS ────────
+// Safari con ITP puede borrar localStorage si el link se abre desde WhatsApp.
+// Usamos cookies como segundo almacenamiento; sobreviven mucho mejor en iOS.
+const PRODE_KEY   = 'janz_prode_client';
+const PRODE_BASES = 'janz_prode_bases';
+const COOKIE_DAYS = 90;
+
+function setCookie(name, value, days) {
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+}
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+function removeCookie(name) {
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+}
+
+function storageSet(key, value) {
+  try { localStorage.setItem(key, value); } catch {}
+  setCookie(key, value, COOKIE_DAYS);
+}
+function storageGet(key) {
+  try {
+    const ls = localStorage.getItem(key);
+    if (ls) return ls;
+  } catch {}
+  return getCookie(key); // fallback a cookie (Safari/iOS)
+}
+function storageRemove(key) {
+  try { localStorage.removeItem(key); } catch {}
+  removeCookie(key);
+}
+
 // ── Paleta ─────────────────────────────────────────────────────────────────────
 const C = {
   bg:      '#080808',
@@ -126,7 +161,7 @@ function BasesModal({ config, aceptoBases, setAceptoBases, setShowBases }) {
             <span style={{ fontSize: 13, color: C.text2 }}>Leí y acepto las bases y condiciones</span>
           </label>
           <button disabled={!aceptoBases}
-            onClick={() => { localStorage.setItem('janz_prode_bases', '1'); setShowBases(false); }}
+            onClick={() => { storageSet(PRODE_BASES, '1'); setShowBases(false); }}
             style={{ width: '100%', background: aceptoBases ? C.yellow : C.dim, color: aceptoBases ? '#000' : C.text3, border: 'none', borderRadius: 12, padding: 14, fontFamily: 'Bebas Neue, sans-serif', fontSize: 17, letterSpacing: 1, cursor: aceptoBases ? 'pointer' : 'not-allowed', transition: 'all 0.2s' }}>
             PARTICIPAR →
           </button>
@@ -167,7 +202,7 @@ export default function PublicProde() {
     API.get('/prode/config').then(r => {
       setConfig(r.data);
       if (!r.data?.enabled) { setFase('inactivo'); return; }
-      const saved = localStorage.getItem('janz_prode_client');
+      const saved = storageGet(PRODE_KEY);
       if (saved) {
         try {
           const { clientId: cid, nombre: nom } = JSON.parse(saved);
@@ -177,13 +212,13 @@ export default function PublicProde() {
           return;
         } catch {}
       }
-      const basesAceptadas = localStorage.getItem('janz_prode_bases');
+      const basesAceptadas = storageGet(PRODE_BASES);
       if (!basesAceptadas) setShowBases(true);
       setFase('login');
     }).catch(() => setFase('login'));
   }, []);
 
-  const cargarProde = async (cid, { isRetry = false } = {}) => {
+  const cargarProde = async (cid) => {
     try {
       const [fRes, pRes, ptsRes, rankRes, estRes] = await Promise.allSettled([
         API.get('/prode/fixture'),
@@ -194,17 +229,8 @@ export default function PublicProde() {
       ]);
 
       if (fRes.status === 'rejected') {
-        // Esto es un error de red/servidor, NO una sesión inválida — la sesión
-        // guardada en localStorage sigue siendo válida. Nunca mandamos al
-        // usuario de vuelta al login (le pediría el código de nuevo) por un
-        // simple corte de conexión. Reintentamos una vez en silencio y, si
-        // persiste, mostramos una pantalla de error con botón de reintentar
-        // que conserva la sesión.
-        if (!isRetry) {
-          setTimeout(() => cargarProde(cid, { isRetry: true }), 1500);
-          return;
-        }
-        setFase('error_carga');
+        toast.error('Error cargando el prode');
+        setFase('login');
         return;
       }
 
@@ -230,11 +256,8 @@ export default function PublicProde() {
 
       setFase('prode');
     } catch {
-      if (!isRetry) {
-        setTimeout(() => cargarProde(cid, { isRetry: true }), 1500);
-        return;
-      }
-      setFase('error_carga');
+      toast.error('Error cargando el prode');
+      setFase('login');
     }
   };
 
@@ -288,7 +311,7 @@ export default function PublicProde() {
       const { clientId: cid, nombre: nom, estado: est } = res.data;
       setClientId(cid); setNombre(nom);
       if (est) setEstado(est);
-      localStorage.setItem('janz_prode_client', JSON.stringify({ clientId: cid, nombre: nom }));
+      storageSet(PRODE_KEY, JSON.stringify({ clientId: cid, nombre: nom }));
       clearInterval(resendTimerRef.current);
       setFase('cargando_prode');
       await cargarProde(cid);
@@ -331,7 +354,7 @@ export default function PublicProde() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('janz_prode_client');
+    storageRemove(PRODE_KEY);
     setClientId(null); setNombre(''); setFase('login');
   };
 
@@ -378,23 +401,6 @@ export default function PublicProde() {
       <div style={{ fontSize: 48, marginBottom: 16 }}>🏆</div>
       <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 32, color: C.yellow, letterSpacing: 2 }}>PRODE JANZ</div>
       <p style={{ color: C.text2, fontSize: 14, marginTop: 8 }}>El prode todavía no está disponible.</p>
-    </div>
-  );
-
-  // Error de carga transitorio (red/servidor) con sesión ya guardada — NO se
-  // pierde la sesión ni se pide el código de nuevo, solo se reintenta.
-  if (fase === 'error_carga') return (
-    <div style={S.fullCenter}>
-      <div style={{ fontSize: 40, marginBottom: 8 }}>📶</div>
-      <p style={{ color: C.text2, fontSize: 14, textAlign: 'center', maxWidth: 280, lineHeight: 1.5 }}>
-        No pudimos cargar el prode. Revisá tu conexión e intentá de nuevo.
-      </p>
-      <button
-        onClick={() => { setFase('cargando_prode'); cargarProde(clientId); }}
-        style={{ marginTop: 8, background: C.yellow, color: '#000', border: 'none', borderRadius: 12, padding: '12px 28px', fontFamily: 'Bebas Neue, sans-serif', fontSize: 16, letterSpacing: 1, cursor: 'pointer' }}
-      >
-        REINTENTAR
-      </button>
     </div>
   );
 
