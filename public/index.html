@@ -17,7 +17,17 @@
     <link rel="apple-touch-icon" href="/favicon-logo.png" />
     <link rel="apple-touch-startup-image" href="/favicon-logo.png" />
     <link rel="manifest" href="/manifest.json" />
+
+    <!--
+      Fuente: antes se cargaba dos veces (acá con @import y de nuevo en
+      global.css), y @import bloquea el descubrimiento/descarga en paralelo
+      del resto del CSS. Con preconnect + link queda una sola carga, en
+      paralelo con el resto de los recursos.
+    -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap" />
+
     <style>
       /* Splash screen mientras carga */
       #splash {
@@ -55,7 +65,6 @@
         margin-top: 32px;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
-      @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
     </style>
   </head>
   <body>
@@ -81,15 +90,16 @@
         });
       }
 
-      // Ocultar splash cuando React cargue
-      window.addEventListener('load', () => {
-        setTimeout(() => {
-          const splash = document.getElementById('splash');
-          if (splash) {
-            splash.classList.add('hidden');
-            setTimeout(() => splash.remove(), 400);
-          }
-        }, 800);
+      // Ocultar splash cuando React cargue.
+      // Antes había un setTimeout fijo de 800ms que retrasaba la
+      // desaparición del splash aunque la app ya estuviera lista. Se quita:
+      // ahora se oculta apenas se dispara "load", sin demora artificial.
+      window.addEventListener("load", () => {
+        const splash = document.getElementById("splash");
+        if (splash) {
+          splash.classList.add("hidden");
+          setTimeout(() => splash.remove(), 400);
+        }
       });
     </script>
   </body>

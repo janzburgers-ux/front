@@ -5,7 +5,10 @@ import { FaWhatsapp } from 'react-icons/fa';
 import API from '../utils/api';
 import toast from 'react-hot-toast';
 import logoJanz from '../assets/logo-janz.png';
-import heroBurger from '../assets/hero-burger.png';
+// Imagen optimizada: la original (PNG, 2.5MB) se reemplazó por un WebP de ~245KB
+// con el mismo contenido visual. -91% de peso en la imagen que más tarda en
+// cargar en /pedido (la del fondo del hero).
+import heroBurger from '../assets/hero-burger.webp';
 import {
   MundialIntroAnimation,
   MundialHeroBadge,

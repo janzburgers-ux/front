@@ -1,4 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap');
+/* La fuente (Bebas Neue + Inter) ahora se carga desde un <link> en
+   public/index.html en vez de @import acá. @import bloquea el descubrimiento
+   en paralelo de este archivo CSS con el resto de los recursos de la página,
+   y además estaba duplicado (index.html la cargaba de nuevo solo para el
+   splash). Con un solo <link> alcanza para toda la app. */
 
 :root {
   --black:        #080810;
