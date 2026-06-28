@@ -1751,8 +1751,8 @@ function MatchRow({ match, onSetResultado, statusBadge, onConfirmTeams }) {
         </div>
       </div>
 
-      {/* ── Acciones (solo partidos scheduled) ────────────────────────── */}
-      {match.status === 'scheduled' && (
+      {/* ── Acciones (scheduled y live) ─────────────────────────────────── */}
+      {(match.status === 'scheduled' || match.status === 'live') && (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {/* Cargar resultado */}
           {!isTBD && (
