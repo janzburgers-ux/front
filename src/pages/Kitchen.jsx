@@ -32,31 +32,53 @@ function calcDeadlines(order) {
   const deliveryMins  = order.deliveryMinutes || 15;
   const cookMins      = Math.max(1, confirmedMins - deliveryMins);
 
-  // Pedidos programados: si ya comenzó la cocción, contar desde cookingStartedAt
-  // Si todavía no empezó, mostrar cuenta regresiva hasta scheduledFor
+  // ── Pedidos PROGRAMADOS ───────────────────────────────────────────────────
+  // El timer de cocción arranca desde cookingStartedAt (cuando la cocina aprieta
+  // "Iniciar Cocción"). Antes de eso, se muestra cuenta regresiva hasta scheduledFor.
   if (order.isScheduled && order.scheduledFor) {
     if (order.cookingStartedAt) {
-      // Ya inició cocción → contar desde cookingStartedAt
       const cookStart  = new Date(order.cookingStartedAt);
       const readyAt    = new Date(cookStart.getTime() + cookMins * 60000);
       const deliveryAt = new Date(cookStart.getTime() + confirmedMins * 60000);
       return { readyAt, deliveryAt, cookMins, deliveryMins, mode: 'cooking' };
     }
-    // Aún no inició → mostrar hora programada
+    // Aún no inició cocción → cuenta regresiva hasta scheduledFor
     const deliveryAt = new Date(order.scheduledFor);
     const readyAt    = new Date(deliveryAt.getTime() - deliveryMins * 60000);
     return { readyAt, deliveryAt, cookMins, deliveryMins, mode: 'scheduled' };
   }
 
-  // Pedido normal: contar desde confirmedAt si existe, sino desde createdAt
-  const base       = new Date(order.confirmedAt || order.receivedAt || order.createdAt);
+  // ── Pedidos INMEDIATOS ────────────────────────────────────────────────────
+  // Timer arranca desde confirmedAt (cuando la cocina acepta el pedido).
+  if (order.confirmedAt) {
+    const base       = new Date(order.confirmedAt);
+    const readyAt    = new Date(base.getTime() + cookMins * 60000);
+    const deliveryAt = new Date(base.getTime() + confirmedMins * 60000);
+    return { readyAt, deliveryAt, cookMins, deliveryMins, mode: 'normal' };
+  }
+
+  // Fallback: aún no confirmado
+  const base       = new Date(order.receivedAt || order.createdAt);
   const readyAt    = new Date(base.getTime() + cookMins * 60000);
   const deliveryAt = new Date(base.getTime() + confirmedMins * 60000);
-  return { readyAt, deliveryAt, cookMins, deliveryMins, mode: 'normal' };
+  return { readyAt, deliveryAt, cookMins, deliveryMins, mode: 'pending' };
 }
 
 function CountdownDisplay({ order }) {
-  const { readyAt, deliveryAt, cookMins, deliveryMins } = calcDeadlines(order);
+  const { readyAt, deliveryAt, cookMins, deliveryMins, mode } = calcDeadlines(order);
+
+  // Modo SCHEDULED sin cocción iniciada: mostrar countdown hasta hora de arranque
+  if (mode === 'scheduled') {
+    const scheduledMs = new Date(order.scheduledFor).getTime();
+    const totalCookMins = order.confirmedMinutes || order.estimatedMinutes || TARGET_MINUTES;
+    const cookStartMs = scheduledMs - totalCookMins * 60000;
+    return <ScheduledWaitDisplay cookStartMs={cookStartMs} deliveryAt={deliveryAt} />;
+  }
+
+  // Modo PENDING: aún no confirmado, sin timer
+  if (mode === 'pending') return null;
+
+  // Modos NORMAL y COOKING: countdown hasta listo
   const readyAtMs = readyAt.getTime();
   const [secsLeft, setSecsLeft] = useState(Math.floor((readyAtMs - Date.now()) / 1000));
 
@@ -77,6 +99,7 @@ function CountdownDisplay({ order }) {
   const color = overdue ? '#f04444' : urgent ? '#f04444' : warning ? '#eab308' : '#22c55e';
   const bg    = overdue ? 'rgba(240,68,68,0.12)' : urgent ? 'rgba(240,68,68,0.08)' : warning ? 'rgba(234,179,8,0.08)' : 'rgba(34,197,94,0.06)';
   const label = overdue ? 'Demorado' : urgent ? 'Muy urgente' : warning ? 'Atención' : 'En tiempo';
+  const modeLabel = mode === 'cooking' ? '🕐 Programado — cocinando' : label;
 
   const timeStr = hours > 0
     ? `${hours}h ${String(mins).padStart(2, '0')}m`
@@ -89,7 +112,7 @@ function CountdownDisplay({ order }) {
         {overdue ? '-' : ''}{timeStr}
       </div>
       <div style={{ fontSize: '0.72rem', lineHeight: 1.5 }}>
-        <div style={{ fontWeight: 700, color }}>{label}</div>
+        <div style={{ fontWeight: 700, color }}>{modeLabel}</div>
         <div style={{ color: 'var(--gray-light)' }}>
           Listo: <span style={{ color: '#f0f0f8', fontWeight: 600 }}>{fmtHora(readyAt)}</span>
           {' · '}
@@ -98,6 +121,49 @@ function CountdownDisplay({ order }) {
         <div style={{ color: 'var(--gray)', fontSize: '0.68rem' }}>
           cocina {cookMins}min + delivery {deliveryMins}min
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Cuenta regresiva para pedido programado esperando inicio de cocción
+function ScheduledWaitDisplay({ cookStartMs, deliveryAt }) {
+  const [secsLeft, setSecsLeft] = useState(Math.floor((cookStartMs - Date.now()) / 1000));
+  useEffect(() => {
+    const id = setInterval(() => setSecsLeft(Math.floor((cookStartMs - Date.now()) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [cookStartMs]);
+
+  const isTime = secsLeft <= 0;
+  const absS = Math.abs(secsLeft);
+  const h = Math.floor(absS / 3600);
+  const m = Math.floor((absS % 3600) / 60);
+  const s = absS % 60;
+  const timeStr = h > 0
+    ? `${h}h ${String(m).padStart(2,'0')}m`
+    : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+
+  const color = isTime ? '#E8B84B' : '#666';
+  const bg    = isTime ? 'rgba(232,184,75,0.12)' : 'rgba(255,255,255,0.03)';
+
+  return (
+    <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: bg, border: `1px solid ${isTime ? 'rgba(232,184,75,0.35)' : 'rgba(255,255,255,0.07)'}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+      <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1.3rem', color, minWidth: 58 }}>
+        {isTime ? '¡YA!' : timeStr}
+      </div>
+      <div style={{ fontSize: '0.72rem', lineHeight: 1.5 }}>
+        <div style={{ fontWeight: 700, color }}>
+          {isTime ? '⚠️ Hora de cocinar' : 'Esperando hora programada'}
+        </div>
+        <div style={{ color: 'var(--gray)' }}>
+          Entrega: <span style={{ color: '#f0f0f8', fontWeight: 600 }}>{fmtHora(deliveryAt)}</span>
+        </div>
+        {!isTime && (
+          <div style={{ color: 'var(--gray)', fontSize: '0.68rem' }}>
+            Iniciar cocción en {timeStr}
+          </div>
+        )}
       </div>
     </div>
   );

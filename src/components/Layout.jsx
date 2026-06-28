@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, ShoppingBag, ChefHat, Package, Beef, Users,
   ShoppingCart, LogOut, BookOpen, UserCog, Menu, X, Ticket,
-  Settings, AlertTriangle, Wallet, BarChart2, Bell, Star, Utensils, PiggyBank, Brain, Smartphone, XCircle, Receipt, FlaskConical, Trophy, Phone, MessageSquare, Send, DollarSign, MessageCircle, Radio} from 'lucide-react';
+  Settings, AlertTriangle, Wallet, BarChart2, Bell, Star, Utensils, PiggyBank, Brain, Smartphone, XCircle, Receipt, FlaskConical, Trophy, Phone, MessageSquare, Send, DollarSign, MessageCircle, Radio, Tag} from 'lucide-react';
 import API from '../utils/api';
 
 const navGroups = [
@@ -26,6 +26,7 @@ const navGroups = [
       { to: '/gestion/ingredientes', label: 'Ingredientes',     icon: BookOpen },
       { to: '/gestion/compras',      label: 'Lista de Compras', icon: ShoppingCart },
       { to: '/gestion/adicionales',  label: 'Adicionales',      icon: Utensils },
+      { to: '/gestion/promos',        label: 'Promos',            icon: Tag },
     ]
   },
   {

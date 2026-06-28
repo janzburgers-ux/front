@@ -149,8 +149,10 @@ const CATEGORIES = [
     templates: [
       { key: 'orderReceived', label: '📥 Pedido recibido', desc: 'Se envía inmediatamente cuando el cliente confirma el pedido desde el formulario público.', vars: ['{nombre}', '{codigo}'] },
       { key: 'orderConfirmed', label: '✅ Confirmado por cocina', desc: 'Se envía cuando la cocina acepta el pedido y asigna tiempo estimado.', vars: ['{nombre}', '{codigo}', '{total}', '{items}', '{descuento}', '{metodoPago}', '{alias}', '{tiempoEstimado}'] },
-      { key: 'orderReady', label: '🛵 Listo / en camino', desc: 'Se envía cuando el pedido pasa a "listo". Para delivery dice "en camino", para takeaway dice "listo para retirar".', vars: ['{nombre}', '{codigo}', '{total}', '{metodoPago}', '{alias}', '{tipoEntrega}'] },
-      { key: 'orderCancelled', label: '❌ Pedido cancelado', desc: 'Se envía cuando el pedido es cancelado por falta de stock u otro motivo.', vars: ['{nombre}', '{codigo}'] },
+      { key: 'orderReady_delivery', label: '🛵 Listo — Delivery', desc: 'Se envía cuando el pedido pasa a "listo" y el tipo de entrega es delivery. Mensaje de "en camino".', vars: ['{nombre}', '{codigo}', '{total}', '{metodoPago}', '{alias}'] },
+      { key: 'orderReady_takeaway', label: '🥡 Listo — Takeaway', desc: 'Se envía cuando el pedido pasa a "listo" y el tipo de entrega es takeaway. Mensaje de "listo para retirar".', vars: ['{nombre}', '{codigo}', '{total}', '{metodoPago}', '{alias}'] },
+      { key: 'orderCancelled',      label: '❌ Pedido cancelado',         desc: 'Se envía cuando el pedido es cancelado por cocina_cerrada u otro motivo. Para sin_stock con cupón se usa el siguiente template.', vars: ['{nombre}', '{codigo}'] },
+      { key: 'orderCancelledStock', label: '❌ Cancelado + cupón disculpa', desc: 'Se envía solo cuando la cocina cancela por sin_stock. Incluye el código del cupón de 10% automático generado para el cliente.', vars: ['{nombre}', '{codigo}', '{cupon}'] },
     ],
   },
   {
@@ -164,6 +166,25 @@ const CATEGORIES = [
     templates: [
       { key: 'referralNotify', label: '🌟 Uso de cupón referido', desc: 'Se envía al dueño del cupón cuando alguien lo usa y el pedido fue entregado. Muestra el % acumulado.', vars: ['{nombre}', '{codigo}', '{clienteNuevo}', '{porcentajeNuevo}', '{totalAcumulado}', '{usosValidos}', '{tope}'], readonly: true, note: 'Definido en loyalty.js → notifyReferralOwner(). Editarlo directamente en el backend.' },
       { key: 'referralRedeem', label: '🎉 Recompensa canjeada', desc: 'Se envía al referente cuando se genera su cupón de recompensa al canjear su % acumulado.', vars: ['{nombre}', '{porcentaje}', '{tope}', '{codigoCupon}'], readonly: true, note: 'Definido en loyalty.js → redeemReferralReward(). Editarlo directamente en el backend.' },
+    ],
+  },
+  {
+    label: '🔔 Cocina',
+    templates: [
+      {
+        key: 'kitchenAlert',
+        label: '⚠️ Alerta de pedido sin confirmar',
+        desc: 'Se envía automáticamente al número de cocina cuando hay pedidos en estado "pendiente" sin confirmar después del tiempo configurado. Se activa y configura en Configuración → Alerta de cocina.',
+        vars: ['{cantidad}', '{plural}', '{minutos}', '{pluralMin}', '{pedidos}'],
+      },
+    ],
+  },
+  {
+    label: '⚽ Premios Prode (Mundial)',
+    templates: [
+      { key: 'prodePrize1', label: '🥇 1er puesto (semanal)', desc: 'Se envía al ganador del 1er puesto: 1 hoy + 3 más automáticamente cada 7 días (4 semanas de Janz gratis). Solo lo puede usar el ganador.', vars: ['{nombre}', '{codigo}', '{semana}'], readonly: true, note: 'Definido en prode-prizes.service.js → sendPrizeMessage()/deliverWeek(). Editarlo directamente en el backend.' },
+      { key: 'prodePrize2', label: '🥈 2do puesto', desc: 'Se envía al ganador del 2do puesto al finalizar el Prode: un cupón con 2 usos (2 hamburguesas dobles).', vars: ['{nombre}', '{codigo}'], readonly: true, note: 'Definido en prode-prizes.service.js → awardSecondPlace(). Editarlo directamente en el backend.' },
+      { key: 'prodePrize3', label: '🥉 3er puesto', desc: 'Se envía al ganador del 3er puesto al finalizar el Prode: un cupón de 1 uso (1 hamburguesa doble).', vars: ['{nombre}', '{codigo}'], readonly: true, note: 'Definido en prode-prizes.service.js → awardThirdPlace(). Editarlo directamente en el backend.' },
     ],
   },
   {
@@ -181,18 +202,28 @@ const CATEGORIES = [
 ];
 
 const DEFAULTS = {
-  orderReceived: `¡Hola {nombre}! 👋\n\nRecibimos tu pedido *{codigo}* ✅\n\nEn breve te confirmamos cuando la cocina lo apruebe.\n\n_Janz Burgers_ 🍔`,
-  orderConfirmed: `¡Hola {nombre}! 🔥\n\nTu pedido *{codigo}* fue *confirmado por la cocina* y ya está en preparación.{tiempoEstimado}\n\n*Detalle del pedido:*\n{items}{descuento}\n\n💰 *Total: {total}*\n{metodoPago}\n\n_Janz Burgers_ 🍔`,
-  orderReady: `¡Hola {nombre}! 🛵\n\nTu pedido *{codigo}* está *en camino*. ✅\n\nEn instantes llega a tu puerta.\n{metodoPago}\n\n_Janz Burgers_ 🍔`,
-  orderCancelled: `¡Hola {nombre}! 😔\n\nTe avisamos que tu pedido *{codigo}* fue cancelado porque en este momento no contamos con stock suficiente.\n\nDisculpá las molestias. Podés volver a pedir en nuestra próxima jornada.\n\n_Janz Burgers_ 🍔`,
-  reviewRequest: `¡Hola {nombre}! 🍔\n\n¿Cómo estuvo tu pedido de hoy?\n\nContanos qué te pareció y *te regalamos algo para la próxima* 🎁\n\n👉 {link}\n\n¡Solo tarda 30 segundos!\n\n_Janz Burgers_ 🍔`,
+  orderReceived:      `¡Hola {nombre}! 👋\n\nRecibimos tu pedido *{codigo}* ✅\n\nEn breve te confirmamos cuando la cocina lo apruebe.\n\n_Janz Burgers_ 🍔`,
+  orderConfirmed:     `¡Hola {nombre}! 🔥\n\nTu pedido *{codigo}* fue *confirmado por la cocina* y ya está en preparación.{tiempoEstimado}\n\n*Detalle del pedido:*\n{items}{descuento}\n\n💰 *Total: {total}*\n{metodoPago}\n\n_Janz Burgers_ 🍔`,
+  orderReady_delivery:`¡Hola {nombre}! 🛵\n\nTu pedido *{codigo}* está *en camino*. ✅\n\nEn instantes llega a tu puerta.\n{metodoPago}\n\n_Janz Burgers_ 🍔`,
+  orderReady_takeaway:`¡Hola {nombre}! 🥡\n\nTu pedido *{codigo}* está *listo para retirar*. ✅\n\nPodés pasar a buscarlo. ¡Te esperamos!\n{metodoPago}\n\n_Janz Burgers_ 🍔`,
+  kitchenAlert:       `⚠️ *Alerta de cocina*\n\nHay {cantidad} pedido{plural} sin confirmar hace más de {minutos} minuto{pluralMin}:\n\n{pedidos}\n\n_Janz Burgers — sistema automático_`,
+  orderCancelled:      `¡Hola {nombre}! 😔\n\nTe avisamos que tu pedido *{codigo}* fue cancelado.\n\nDisculpá las molestias. Podés volver a pedir en nuestra próxima jornada.\n\n_Janz Burgers_ 🍔`,
+  orderCancelledStock: `¡Hola {nombre}! 😔\n\nLamentamos que tu pedido *{codigo}* fue cancelado porque nos quedamos sin stock.\n\nPara disculparnos, te regalamos un *10% de descuento* en tu próximo pedido:\n\n🎟️ Código: *{cupon}*\n\nVálido por 15 días, un solo uso. ¡Te esperamos pronto!\n\n_Janz Burgers_ 🍔`,
+  reviewRequest:      `¡Hola {nombre}! 🍔\n\n¿Cómo estuvo tu pedido de hoy?\n\nContanos qué te pareció y *te regalamos algo para la próxima* 🎁\n\n👉 {link}\n\n¡Solo tarda 30 segundos!\n\n_Janz Burgers_ 🍔`,
 };
 
-const PREVIEW = { nombre:'Gianfranco', codigo:'jz-abc4', total:'$15.000', items:'  • CAVA Simple ×1 — $12.000\n  • JANZ Doble ×1 — $15.000', descuento:'\n🎟️ Cupón RF-ABM37: -$1.500', metodoPago:'\n💵 Tené listo $15.000 en efectivo.', alias:'janzburgers', tiempoEstimado:'\n⏱️ Tiempo estimado: 25 minutos.', tipoEntrega:'delivery', link:'https://janzburgers.vercel.app/resena/jz-abc4', clienteNuevo:'María García', porcentajeNuevo:'5', totalAcumulado:'15', usosValidos:'3', tope:'$14.000', porcentaje:'15', codigoCupon:'RF-ABM37', dias:'25' };
+const PREVIEW_DELIVERY = { nombre:'Gianfranco', codigo:'jz-abc4', total:'$15.000', items:'  • CAVA Simple ×1 — $12.000\n  • JANZ Doble ×1 — $15.000', descuento:'\n🎟️ Cupón RF-ABM37: -$1.500', metodoPago:'\n💵 Tené listo $15.000 en efectivo.', alias:'janzburgers', tiempoEstimado:'\n⏱️ Tiempo estimado: 25 minutos.', tipoEntrega:'delivery', link:'https://janzburgers.vercel.app/resena/jz-abc4', clienteNuevo:'María García', porcentajeNuevo:'5', totalAcumulado:'15', usosValidos:'3', tope:'$14.000', porcentaje:'15', codigoCupon:'RF-ABM37', dias:'25' };
+const PREVIEW_TAKEAWAY = { ...PREVIEW_DELIVERY, metodoPago:'', tipoEntrega:'takeaway' };
 
-function fillPreview(tpl) {
+const PREVIEW_BY_KEY = {
+  orderReady_delivery: PREVIEW_DELIVERY,
+  orderReady_takeaway: PREVIEW_TAKEAWAY,
+};
+
+function fillPreview(tpl, key) {
   if (!tpl) return '';
-  return Object.entries(PREVIEW).reduce((m,[k,v]) => m.replace(new RegExp(`\\{${k}\\}`,'g'),v), tpl);
+  const vars = PREVIEW_BY_KEY[key] || PREVIEW_DELIVERY;
+  return Object.entries(vars).reduce((m,[k,v]) => m.replace(new RegExp(`\\{${k}\\}`,'g'),v), tpl);
 }
 
 export default function WhatsappMessages() {
@@ -203,7 +234,15 @@ export default function WhatsappMessages() {
 
   useEffect(() => {
     API.get('/whatsapp-templates')
-      .then(r => setTemplates({ ...DEFAULTS, ...r.data }))
+      .then(r => {
+        const fromDB = r.data || {};
+        // Migración suave: si existe 'orderReady' guardado y no existe 'orderReady_delivery',
+        // usar el valor viejo como punto de partida del delivery (no del takeaway).
+        if (fromDB.orderReady && !fromDB.orderReady_delivery) {
+          fromDB.orderReady_delivery = fromDB.orderReady;
+        }
+        setTemplates({ ...DEFAULTS, ...fromDB });
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -291,7 +330,7 @@ export default function WhatsappMessages() {
 
                   <div style={{ marginTop:14, padding:'12px 16px', background:'#0a0a0a', borderRadius:10, border:'1px solid rgba(255,255,255,0.06)' }}>
                     <div style={{ fontSize:'0.65rem', fontWeight:700, color:'rgba(255,255,255,0.18)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:8 }}>Preview con datos de ejemplo</div>
-                    <div style={{ fontSize:'0.82rem', color:'rgba(255,255,255,0.55)', whiteSpace:'pre-wrap', lineHeight:1.6 }}>{fillPreview(templates[activeTemplate.key] || '')}</div>
+                    <div style={{ fontSize:'0.82rem', color:'rgba(255,255,255,0.55)', whiteSpace:'pre-wrap', lineHeight:1.6 }}>{fillPreview(templates[activeTemplate.key] || '', activeTemplate.key)}</div>
                   </div>
 
                   <div style={{ display:'flex', gap:10, marginTop:16 }}>

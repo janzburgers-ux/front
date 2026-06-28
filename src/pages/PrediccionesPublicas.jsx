@@ -248,13 +248,12 @@ function MatchCard({ match, predictions, loadingPred, expanded, onToggle }) {
 // ══════════════════════════════════════════════════════════════════════════════
 export default function PrediccionesPublicas() {
   const [fixture,      setFixture     ] = useState([]);
-  const [predictions,  setPredictions ] = useState({}); // matchId → []
-  const [loadingPreds, setLoadingPreds] = useState({}); // matchId → bool
+  const [predictions,  setPredictions ] = useState({}); // matchId → [] (solo partidos revelados)
   const [expanded,     setExpanded    ] = useState({}); // matchId → bool
   const [stageFilter,  setStageFilter ] = useState('all');
   const [loading,      setLoading     ] = useState(true);
   const [, setTick] = useState(0); // dispara re-render cada segundo para el countdown
-  const fetchedRef = useRef(new Set());
+  const autoExpandedRef = useRef(new Set()); // matchIds ya auto-expandidos al revelarse
 
   // Carga el fixture una sola vez al montar
   useEffect(() => {
@@ -270,41 +269,40 @@ export default function PrediccionesPublicas() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Trae las predicciones de un partido (solo si ya pasaron 5 min)
-  const fetchPredictions = useCallback(async (matchId) => {
-    if (fetchedRef.current.has(matchId)) return;
-    fetchedRef.current.add(matchId);
-    setLoadingPreds(prev => ({ ...prev, [matchId]: true }));
+  // Trae en UNA sola request las predicciones de TODOS los partidos ya
+  // revelados. Antes se pedía partido por partido (uno por cada partido ya
+  // arrancado), lo que con el Mundial avanzado dispara docenas de requests
+  // simultáneos apenas se entra a la página. Ahora siempre es 1 sola llamada.
+  const fetchAllPredictions = useCallback(async () => {
     try {
-      const res = await API.get(`/prode/predicciones-publicas/${matchId}`);
-      if (res.data.revealed) {
-        setPredictions(prev => ({ ...prev, [matchId]: res.data.predicciones }));
-        // Auto-expandir al revelar por primera vez
-        setExpanded(prev => ({ ...prev, [matchId]: true }));
-      } else {
-        // Todavía no revelado → sacar del set para reintentar
-        fetchedRef.current.delete(matchId);
+      const res = await API.get('/prode/predicciones-publicas');
+      const nuevas = {};
+      for (const [matchId, data] of Object.entries(res.data)) {
+        if (data.revealed) nuevas[matchId] = data.predicciones;
       }
-    } catch {
-      fetchedRef.current.delete(matchId);
-    } finally {
-      setLoadingPreds(prev => ({ ...prev, [matchId]: false }));
-    }
+      setPredictions(prev => ({ ...prev, ...nuevas }));
+      // Auto-expandir la primera vez que aparecen las predicciones de cada partido
+      setExpanded(prev => {
+        const next = { ...prev };
+        for (const matchId of Object.keys(nuevas)) {
+          if (!autoExpandedRef.current.has(matchId)) {
+            autoExpandedRef.current.add(matchId);
+            next[matchId] = true;
+          }
+        }
+        return next;
+      });
+    } catch { /* se reintenta solo en el próximo ciclo de 30s */ }
   }, []);
 
-  // Cada 30 segundos: chequear si algún partido se acaba de desbloquear
+  // Carga inicial + refresco cada 30 segundos (para detectar partidos que
+  // se acaban de revelar), pero siempre con UNA sola llamada al backend.
   useEffect(() => {
-    const check = () => {
-      fixture.forEach(m => {
-        if (isRevealed(m.matchDate) && !fetchedRef.current.has(m._id)) {
-          fetchPredictions(m._id);
-        }
-      });
-    };
-    check(); // correr inmediatamente cuando el fixture esté disponible
-    const id = setInterval(check, 30_000);
+    if (fixture.length === 0) return;
+    fetchAllPredictions();
+    const id = setInterval(fetchAllPredictions, 30_000);
     return () => clearInterval(id);
-  }, [fixture, fetchPredictions]);
+  }, [fixture.length, fetchAllPredictions]);
 
   // Tick cada segundo para el countdown de los partidos próximos a revelarse
   useEffect(() => {
@@ -413,7 +411,7 @@ export default function PrediccionesPublicas() {
                 key={match._id}
                 match={match}
                 predictions={predictions[match._id]}
-                loadingPred={loadingPreds[match._id]}
+                loadingPred={isRevealed(match.matchDate) && predictions[match._id] === undefined}
                 expanded={!!expanded[match._id]}
                 onToggle={() => setExpanded(prev => ({ ...prev, [match._id]: !prev[match._id] }))}
               />

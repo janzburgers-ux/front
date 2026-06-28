@@ -21,6 +21,7 @@ import CashRegister from './pages/CashRegister';
 import Reports from './pages/Reports';
 import Loyalty from './pages/Loyalty';
 import Additionals from './pages/Additionals';
+import Promos from './pages/Promos';
 import Finance from './pages/Finance';
 import Analytics from './pages/Analytics';
 import ChurnJob from './pages/ChurnJob';
@@ -87,6 +88,7 @@ function AppRoutes() {
         <Route path="usuarios" element={<ProtectedRoute adminOnly><Users /></ProtectedRoute>} />
         <Route path="cupones" element={<ProtectedRoute adminOnly><Coupons /></ProtectedRoute>} />
         <Route path="adicionales" element={<ProtectedRoute adminOnly><Additionals /></ProtectedRoute>} />
+        <Route path="promos" element={<ProtectedRoute adminOnly><Promos /></ProtectedRoute>} />
         <Route path="fidelizacion" element={<ProtectedRoute adminOnly><Loyalty /></ProtectedRoute>} />
         <Route path="caja" element={<ProtectedRoute adminOnly><CashRegister /></ProtectedRoute>} />
         <Route path="reportes" element={<ProtectedRoute adminOnly><Reports /></ProtectedRoute>} />

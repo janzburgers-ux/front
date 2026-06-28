@@ -49,6 +49,13 @@ export default function Config() {
   const [orderLimits, setOrderLimits] = useState({ enabled: false, dailyMax: 50 });
   const [maxOrdersPerSlot, setMaxOrdersPerSlot] = useState(5);
 
+  // ── Alerta de cocina por WhatsApp (Fase 5) ───────────────────────────────
+  const [kitchenAlert, setKitchenAlert] = useState({
+    enabled: true,
+    phoneNumber: '',
+    minutesThreshold: 5,
+  });
+
   // ── Objetivos de Caja ─────────────────────────────────────────────────────
   const [cajaGoals, setCajaGoals] = useState({
     dia:   { money: 0, burgers: 0, orders: 0, newClients: 0, returningClients: 0, avgTicket: 0, coupons: 0 },
@@ -135,6 +142,7 @@ export default function Config() {
         if (cfg.nextMatch) setNextMatch(nm => ({ ...nm, ...cfg.nextMatch }));
         if (cfg.heroImage) setHeroImage(cfg.heroImage);
         if (cfg.operationOverrides) setOperationOverrides(cfg.operationOverrides || []);
+        if (cfg.kitchenAlertSettings) setKitchenAlert(k => ({ ...k, ...cfg.kitchenAlertSettings }));
       })
       .finally(() => setLoading(false));
   }, []);
@@ -996,6 +1004,71 @@ export default function Config() {
               </div>
             </div>
           </div>
+        </Section>
+
+      {/* ── Alerta de cocina por WhatsApp ────────────────────────────────── */}
+        <Section title="Alerta de cocina" icon={MessageCircle}>
+          <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: 16 }}>
+            Si un pedido sigue en <strong style={{ color: 'white' }}>pendiente</strong> sin que nadie lo confirme pasados X minutos,
+            se manda un WhatsApp de respaldo a un número configurado. Útil cuando falla el push o nadie ve la pantalla de cocina.
+          </p>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, padding: '14px 16px', background: 'var(--dark)', borderRadius: 10, border: `1px solid ${kitchenAlert.enabled ? 'rgba(232,184,75,0.3)' : 'var(--border)'}` }}>
+            <div>
+              <div style={{ fontWeight: 600 }}>🔔 Alerta automática a cocina</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--gray)', marginTop: 2 }}>
+                {kitchenAlert.enabled ? 'El sistema revisá cada minuto si hay pedidos sin confirmar' : 'La alerta está desactivada'}
+              </div>
+            </div>
+            <button
+              className={`btn btn-sm ${kitchenAlert.enabled ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setKitchenAlert(k => ({ ...k, enabled: !k.enabled }))}>
+              {kitchenAlert.enabled ? '🟢 Activo' : '⚪ Inactivo'}
+            </button>
+          </div>
+
+          <div style={{ opacity: kitchenAlert.enabled ? 1 : 0.4, pointerEvents: kitchenAlert.enabled ? 'auto' : 'none' }}>
+            <div className="grid-2" style={{ marginBottom: 16 }}>
+              <div className="form-group">
+                <label>📱 Número de WhatsApp de cocina</label>
+                <input
+                  value={kitchenAlert.phoneNumber}
+                  onChange={e => setKitchenAlert(k => ({ ...k, phoneNumber: e.target.value.replace(/\D/g, '') }))}
+                  placeholder="ej: 5491112345678 (sin + ni espacios)"
+                />
+                <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>
+                  Formato internacional sin +. Argentina: 549 + cód. área + número.
+                </span>
+              </div>
+              <div className="form-group">
+                <label>⏱️ Minutos de espera antes de alertar</label>
+                <input
+                  type="number" min={1} max={30}
+                  value={kitchenAlert.minutesThreshold}
+                  onChange={e => setKitchenAlert(k => ({ ...k, minutesThreshold: Number(e.target.value) }))}
+                />
+                <span style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>
+                  Si en {kitchenAlert.minutesThreshold} min el pedido sigue en "pendiente", se manda el WA.
+                </span>
+              </div>
+            </div>
+
+            <div style={{ padding: '10px 14px', background: 'rgba(232,184,75,0.06)', border: '1px solid rgba(232,184,75,0.15)', borderRadius: 8, fontSize: '0.8rem', color: 'var(--gray)', marginBottom: 16 }}>
+              💡 El mensaje que se envía es editable desde <strong style={{ color: 'var(--gold)' }}>Mensajes de WhatsApp → Alerta de cocina</strong>.
+              Incluye el código del pedido y cuántos minutos lleva esperando.
+            </div>
+          </div>
+
+          <button className="btn btn-primary" onClick={async () => {
+            setSaving('kitchenAlert');
+            try {
+              await API.put('/config/kitchenAlertSettings', { value: kitchenAlert });
+              toast.success('Alerta de cocina guardada');
+            } catch { toast.error('Error al guardar'); }
+            finally { setSaving(''); }
+          }} disabled={saving === 'kitchenAlert'}>
+            <Save size={15} /> {saving === 'kitchenAlert' ? 'Guardando...' : 'Guardar alerta de cocina'}
+          </button>
         </Section>
 
       {/* Mensajes de WhatsApp */}

@@ -750,36 +750,63 @@ export default function Dashboard() {
                 <div style={{ fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Clock size={16} color="var(--gold)" /> Tiempos de entrega del mes
                 </div>
-                <div style={{ display: 'flex', gap: 24, marginBottom: 16, flexWrap: 'wrap' }}>
-                  <div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>PROMEDIO</div>
-                    <div style={{ fontFamily: 'Bebas Neue', fontSize: '2rem', color: sales.avgDeliveryTime > 30 ? '#f59e0b' : '#22c55e' }}>
-                      {sales.avgDeliveryTime} min
+
+                {/* Resumen total */}
+                <div style={{ display: 'flex', gap: 16, marginBottom: 18, flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'TOTAL PROM.', val: sales.avgDeliveryTime, color: sales.avgDeliveryTime > 30 ? '#f59e0b' : '#22c55e' },
+                    { label: 'MÍNIMO',      val: Math.min(...sales.deliveryTimes.map(t => t.minutes)), color: '#22c55e' },
+                    { label: 'MÁXIMO',      val: Math.max(...sales.deliveryTimes.map(t => t.minutes)), color: '#ef4444' },
+                    { label: 'PEDIDOS',     val: sales.deliveryTimes.length, color: 'white', noMin: true },
+                  ].map(s => (
+                    <div key={s.label}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--gray)' }}>{s.label}</div>
+                      <div style={{ fontFamily: 'Bebas Neue', fontSize: '2rem', color: s.color }}>
+                        {s.val}{s.noMin ? '' : ' min'}
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>MÍNIMO</div>
-                    <div style={{ fontFamily: 'Bebas Neue', fontSize: '2rem', color: '#22c55e' }}>
-                      {Math.min(...sales.deliveryTimes.map(t => t.minutes))} min
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>MÁXIMO</div>
-                    <div style={{ fontFamily: 'Bebas Neue', fontSize: '2rem', color: '#ef4444' }}>
-                      {Math.max(...sales.deliveryTimes.map(t => t.minutes))} min
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>PEDIDOS</div>
-                    <div style={{ fontFamily: 'Bebas Neue', fontSize: '2rem' }}>{sales.deliveryTimes.length}</div>
-                  </div>
+                  ))}
                 </div>
+
+                {/* Tres tramos */}
+                {sales.avgTramos && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--gray)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+                      Desglose por tramo (promedio)
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {[
+                        { label: '⏱ Espera de aceptación', desc: 'Desde que entra el pedido hasta que la cocina lo confirma', val: sales.avgTramos.aceptacion, target: 5, color: '#818cf8' },
+                        { label: '🔥 Cocción',              desc: 'Desde que se inicia la cocción hasta marcar listo', val: sales.avgTramos.coccion, target: 18, color: '#E8B84B' },
+                        { label: '🛵 Entrega',              desc: 'Desde listo hasta marcado como entregado', val: sales.avgTramos.entrega, target: 10, color: '#34d399' },
+                      ].map(t => (
+                        <div key={t.label} style={{ background: 'var(--dark)', borderRadius: 8, padding: '10px 12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                            <div>
+                              <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'white' }}>{t.label}</span>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--gray)' }}>{t.desc}</div>
+                            </div>
+                            <div style={{ fontFamily: 'Bebas Neue', fontSize: '1.5rem', color: t.val != null && t.val > t.target ? '#f59e0b' : t.color }}>
+                              {t.val != null ? `${t.val} min` : '—'}
+                            </div>
+                          </div>
+                          {t.val != null && (
+                            <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${Math.min(100, (t.target / (t.val || t.target)) * 100)}%`, background: t.val > t.target ? '#f59e0b' : t.color, borderRadius: 2, transition: 'width 0.6s ease' }} />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ height: 6, background: 'var(--dark)', borderRadius: 3, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${Math.min(100, (30 / (sales.avgDeliveryTime || 30)) * 100)}%`,
                     background: sales.avgDeliveryTime <= 30 ? '#22c55e' : '#f59e0b', borderRadius: 3, transition: 'width 0.6s ease' }} />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--gray)', marginTop: 4 }}>
-                  <span>0 min</span><span>Objetivo: 30 min</span>
+                  <span>0 min</span><span>Objetivo total: 30 min</span>
                 </div>
               </div>
             )}

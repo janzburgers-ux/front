@@ -43,7 +43,7 @@ const EMOJI_SUGGESTIONS = {
   salsa:       ['🫙','🌶️','🧄','🍅','🫒','🥫','💛','❤️','🤍'],
 };
 
-const EMPTY_FORM = { name: '', description: '', price: 0, emoji: '', appliesTo: 'burger' };
+const EMPTY_FORM = { name: '', description: '', price: 0, emoji: '', appliesTo: 'burger', ingredient: '', consumesQuantity: 1, consumesUnit: '' };
 
 export default function Additionals() {
   const [tab, setTab]             = useState('hamburguesa');
@@ -54,6 +54,7 @@ export default function Additionals() {
   const [editVals, setEditVals]   = useState({});
   const [form, setForm]           = useState(EMPTY_FORM);
   const [saving, setSaving]       = useState(false);
+  const [ingredients, setIngredients] = useState([]); // Fase 3: lista de ingredientes para selector
 
   const fetchAll = () => {
     setLoading(true);
@@ -63,7 +64,11 @@ export default function Additionals() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    fetchAll();
+    // Cargar ingredientes para el selector de vínculo de stock
+    API.get('/ingredients').then(r => setIngredients(r.data || [])).catch(() => {});
+  }, []);
 
   // Cuando cambia el tab, resetear el appliesTo del form al default correcto
   useEffect(() => {
@@ -82,6 +87,9 @@ export default function Additionals() {
         category: tab,
         price: Number(form.price) || 0,
         appliesTo: form.appliesTo || defaultAppliesTo(tab),
+        ingredient: form.ingredient || null,
+        consumesQuantity: form.ingredient ? (Number(form.consumesQuantity) || 1) : 1,
+        consumesUnit: form.consumesUnit || '',
       };
       const res = await API.post('/additionals', payload);
       setItems(prev => [...prev, res.data]);
@@ -101,6 +109,9 @@ export default function Additionals() {
       price: item.price,
       emoji: item.emoji || '',
       appliesTo: item.appliesTo || defaultAppliesTo(item.category),
+      ingredient: item.ingredient?._id || item.ingredient || '',
+      consumesQuantity: item.consumesQuantity || 1,
+      consumesUnit: item.consumesUnit || '',
     });
   };
 
@@ -113,6 +124,9 @@ export default function Additionals() {
         price: Number(editVals.price) || 0,
         emoji: editVals.emoji,
         appliesTo: editVals.appliesTo,
+        ingredient: editVals.ingredient || null,
+        consumesQuantity: editVals.ingredient ? (Number(editVals.consumesQuantity) || 1) : 1,
+        consumesUnit: editVals.consumesUnit || '',
       });
       setItems(prev => prev.map(i => i._id === id ? res.data : i));
       setEditItem(null);
@@ -189,6 +203,7 @@ export default function Additionals() {
                   <th>Descripción</th>
                   <th>Precio</th>
                   <th>Aplica a</th>
+                  <th>Stock vinculado</th>
                   <th></th>
                 </tr>
               </thead>
@@ -220,6 +235,24 @@ export default function Additionals() {
                           </select>
                         </td>
                         <td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <select value={editVals.ingredient} onChange={e => setEditVals(v => ({ ...v, ingredient: e.target.value }))}
+                              style={{ background: '#1a1a1a', border: '1px solid var(--border)', borderRadius: 6, color: 'white', padding: '6px 10px', fontSize: '0.82rem' }}>
+                              <option value="">Sin vínculo</option>
+                              {ingredients.map(i => <option key={i._id} value={i._id}>{i.name} ({i.unit})</option>)}
+                            </select>
+                            {editVals.ingredient && (
+                              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                <input type="number" min="0.01" step="0.01" value={editVals.consumesQuantity}
+                                  onChange={e => setEditVals(v => ({ ...v, consumesQuantity: e.target.value }))}
+                                  style={{ width: 70 }} placeholder="Cant." />
+                                <input value={editVals.consumesUnit} onChange={e => setEditVals(v => ({ ...v, consumesUnit: e.target.value }))}
+                                  placeholder="ud." style={{ width: 60 }} />
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button className="btn-icon" onClick={() => handleSaveEdit(item._id)} disabled={saving}
                               style={{ color: 'var(--green)' }}><Check size={14} /></button>
@@ -231,6 +264,9 @@ export default function Additionals() {
                       <>
                         <td>
                           <div style={{ fontWeight: 600 }}>{item.emoji} {item.name}</div>
+                          {item.available === false && (
+                            <span style={{ fontSize: '0.68rem', color: 'var(--red)', fontWeight: 600 }}>⚠ Sin stock</span>
+                          )}
                         </td>
                         <td style={{ color: 'var(--gray)', fontSize: '0.82rem' }}>{item.description || '—'}</td>
                         <td style={{ color: 'var(--gold)', fontWeight: 700 }}>{fmt(item.price)}</td>
@@ -238,6 +274,12 @@ export default function Additionals() {
                           <span style={{ fontSize: '0.78rem', color: 'var(--gray-light)', background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: 6 }}>
                             {appliesToLabel(item.appliesTo || defaultAppliesTo(item.category))}
                           </span>
+                        </td>
+                        <td style={{ fontSize: '0.78rem' }}>
+                          {item.ingredient
+                            ? <span style={{ color: 'var(--gray-light)' }}>🔗 {ingredients.find(i => i._id === (item.ingredient?._id || item.ingredient))?.name || 'Vinculado'} × {item.consumesQuantity}</span>
+                            : <span style={{ color: 'var(--gray)' }}>—</span>
+                          }
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 6 }}>
@@ -310,6 +352,35 @@ export default function Additionals() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Vínculo con stock — Fase 3 */}
+              <div className="form-group">
+                <label>Stock vinculado <span style={{ color: 'var(--gray)', fontWeight: 400, fontSize: '0.78rem' }}>(opcional)</span></label>
+                <p style={{ fontSize: '0.76rem', color: 'var(--gray)', marginTop: 2, marginBottom: 8, lineHeight: 1.5 }}>
+                  Si este adicional consume un insumo con stock limitado (ej. panceta, huevo), vinculalo para que se apague automáticamente cuando se acabe.
+                  Dejá vacío para insumos ilimitados (salsas de bidón, etc).
+                </p>
+                <select value={form.ingredient} onChange={e => setForm(f => ({ ...f, ingredient: e.target.value }))}
+                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid var(--border)', borderRadius: 8, color: 'white', padding: '9px 12px', fontSize: '0.85rem', marginBottom: 8 }}>
+                  <option value="">Sin vínculo de stock</option>
+                  {ingredients.map(i => <option key={i._id} value={i._id}>{i.name} ({i.unit})</option>)}
+                </select>
+                {form.ingredient && (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: '0.76rem', color: 'var(--gray)', marginBottom: 4, display: 'block' }}>Cantidad que consume por unidad pedida</label>
+                      <input type="number" min="0.01" step="0.01" value={form.consumesQuantity}
+                        onChange={e => setForm(f => ({ ...f, consumesQuantity: e.target.value }))}
+                        placeholder="1" />
+                    </div>
+                    <div style={{ width: 90 }}>
+                      <label style={{ fontSize: '0.76rem', color: 'var(--gray)', marginBottom: 4, display: 'block' }}>Unidad (info)</label>
+                      <input value={form.consumesUnit} onChange={e => setForm(f => ({ ...f, consumesUnit: e.target.value }))}
+                        placeholder="ud." />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <div className="modal-footer">

@@ -104,15 +104,25 @@ function AdditionalsModal({ product, availableAdditionals, onConfirm, onClose })
 
   const AdditionalItem = ({ add }) => {
     const qty = selected[add._id] || 0;
+    const outOfStock = add.available === false;
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: qty > 0 ? 'rgba(232,184,75,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${qty > 0 ? 'rgba(232,184,75,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '12px 14px', marginBottom: 8, transition: 'all 0.2s' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: outOfStock ? 'rgba(255,255,255,0.01)' : qty > 0 ? 'rgba(232,184,75,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${outOfStock ? 'rgba(255,255,255,0.04)' : qty > 0 ? 'rgba(232,184,75,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '12px 14px', marginBottom: 8, transition: 'all 0.2s', opacity: outOfStock ? 0.45 : 1 }}>
         <div>
-          <div style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem' }}>{add.emoji} {add.name}</div>
+          <div style={{ color: outOfStock ? '#555' : 'white', fontWeight: 600, fontSize: '0.9rem' }}>{add.emoji} {add.name}</div>
           {add.description && <div style={{ color: '#555', fontSize: '0.73rem', marginTop: 2 }}>{add.description}</div>}
-          <div style={{ color: GOLD, fontWeight: 700, fontSize: '0.88rem', marginTop: 4 }}>{fmt(add.price)}</div>
+          {outOfStock
+            ? <div style={{ color: '#555', fontSize: '0.72rem', marginTop: 4, fontStyle: 'italic' }}>Sin stock por hoy</div>
+            : <div style={{ color: GOLD, fontWeight: 700, fontSize: '0.88rem', marginTop: 4 }}>{fmt(add.price)}</div>
+          }
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {qty > 0 ? (<><button onClick={() => changeQty(add._id, -1)} style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', fontSize: '1rem', cursor: 'pointer' }}>−</button><span style={{ fontWeight: 700, minWidth: 18, textAlign: 'center', color: 'white' }}>{qty}</span><button onClick={() => changeQty(add._id, 1)} style={{ width: 30, height: 30, borderRadius: '50%', background: GOLD, border: 'none', color: '#000', fontSize: '1rem', cursor: 'pointer', fontWeight: 700 }}>+</button></>) : (<button onClick={() => toggle(add)} style={{ background: 'rgba(232,184,75,0.1)', color: GOLD, border: '1px solid rgba(232,184,75,0.3)', padding: '6px 14px', borderRadius: 8, fontWeight: 700, cursor: 'pointer', fontSize: '0.82rem' }}>+ Agregar</button>)}
+          {outOfStock ? (
+            <span style={{ color: '#444', fontSize: '0.75rem' }}>No disponible</span>
+          ) : qty > 0 ? (
+            <><button onClick={() => changeQty(add._id, -1)} style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', fontSize: '1rem', cursor: 'pointer' }}>−</button><span style={{ fontWeight: 700, minWidth: 18, textAlign: 'center', color: 'white' }}>{qty}</span><button onClick={() => changeQty(add._id, 1)} style={{ width: 30, height: 30, borderRadius: '50%', background: GOLD, border: 'none', color: '#000', fontSize: '1rem', cursor: 'pointer', fontWeight: 700 }}>+</button></>
+          ) : (
+            <button onClick={() => toggle(add)} style={{ background: 'rgba(232,184,75,0.1)', color: GOLD, border: '1px solid rgba(232,184,75,0.3)', padding: '6px 14px', borderRadius: 8, fontWeight: 700, cursor: 'pointer', fontSize: '0.82rem' }}>+ Agregar</button>
+          )}
         </div>
       </div>
     );
@@ -276,7 +286,12 @@ export default function PublicOrder() {
     } catch { return false; }
   });
   const [countdown, setCountdown]                       = useState('');
+  const [anyLowStock, setAnyLowStock]                   = useState(false);
   const [activeSection, setActiveSection]               = useState('burgers');
+  const [promos, setPromos] = useState([]);
+  const [stockIssueModal, setStockIssueModal]           = useState(null);
+  const [showCancelConfirm, setShowCancelConfirm]       = useState(false);
+  const [cancelando, setCancelando]                     = useState(false);
 
   // ── Modo Mundial ─────────────────────────────────────────────────
   const [mundialIntroSeen, setMundialIntroSeen]         = useState(() => {
@@ -302,6 +317,8 @@ export default function PublicOrder() {
       if (r.data.businessWhatsapp) setBusinessWhatsapp(r.data.businessWhatsapp);
       if (r.data.dailyDeal) setDailyDeal(r.data.dailyDeal);
       if (r.data.monthlyBurger) setMonthlyBurger(r.data.monthlyBurger);
+      if (r.data.anyLowStock) setAnyLowStock(true);
+      if (r.data.promos?.length) setPromos(r.data.promos);
       if (r.data.todayOverride) setTodayOverride(r.data.todayOverride);
     }).catch(() => setSystemDown(true)).finally(() => setLoading(false));
     const params = new URLSearchParams(window.location.search);
@@ -693,20 +710,38 @@ export default function PublicOrder() {
     else if (step === 'pago') setStep('datos');
   };
 
-  const doSubmit = async () => {
+  // ── Cancelación por el cliente (Fase 8.2) ────────────────────────────────
+  const handleClientCancel = async () => {
+    if (cancelando) return;
+    setCancelando(true);
+    try {
+      await API.put(`/public/order/${orderResult?._id}/cancel`, {
+        publicCode: orderResult?.publicCode || orderResult?.orderNumber,
+      });
+      setOrderStatus('cancelled');
+      setShowCancelConfirm(false);
+      try { localStorage.removeItem('janz_pending_order'); } catch {}
+      setPendingOrderCode(null);
+    } catch (e) {
+      const msg = e.response?.data?.message || 'No se pudo cancelar el pedido.';
+      toast.error(msg);
+      if (e.response?.data?.alreadyConfirmed) setShowCancelConfirm(false);
+    } finally {
+      setCancelando(false);
+    }
+  };
+
+  const doSubmit = async (acceptPartialItems = null) => {
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setShowConfirmModal(false);
-    setSubmitting(true);        // ← el modal aparece acá, antes de la llamada al backend
+    setSubmitting(true);
     try {
       const finalAddr    = client.useAltAddress ? (client.altAddress    || client.address)    : client.address;
       const finalFloor   = client.useAltAddress ? (client.altFloor      || client.floor)      : client.floor;
       const finalRefs    = client.useAltAddress ? (client.altReferences || client.references) : client.references;
       const clientPayload = { ...client, address: finalAddr, floor: finalFloor, references: finalRefs };
 
-      // ── Anti-duplicados: generar o reutilizar el key de esta sesión de checkout ──
-      // sessionStorage se limpia al cerrar la tab, así que es seguro reutilizarlo
-      // en reintentos de la misma sesión (corte de internet) pero no entre sesiones.
       let idempotencyKey = null;
       try {
         idempotencyKey = sessionStorage.getItem('janz_idempotency_key');
@@ -714,30 +749,35 @@ export default function PublicOrder() {
           idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
           sessionStorage.setItem('janz_idempotency_key', idempotencyKey);
         }
-      } catch { /* sessionStorage no disponible — continúa sin el key */ }
+      } catch { /* sessionStorage no disponible */ }
+
+      // Si viene acceptPartialItems, usar esos items y marcar acceptPartial=true
+      const itemsToSend = acceptPartialItems
+        ? acceptPartialItems.map(i => ({ product: i.product, quantity: i.quantity, additionals: (i.additionals || []).map(a => ({ additional: a.additional, quantity: a.quantity })) }))
+        : cart.map(i => ({ product: i.product, quantity: i.quantity, additionals: (i.additionals || []).map(a => ({ additional: a.additional, quantity: a.quantity })) }));
 
       const res = await API.post('/public/order', {
-        client: clientPayload, items: cart.map(i => ({ product: i.product, quantity: i.quantity, additionals: (i.additionals || []).map(a => ({ additional: a.additional, quantity: a.quantity })) })),
+        client: clientPayload, items: itemsToSend,
         deliveryType, paymentMethod, notes: client.notes, zone: selectedZone,
         scheduledFor: scheduledFor === 'asap' ? null : scheduledFor, isScheduled: scheduledFor !== 'asap',
         deliveryAddress: deliveryType === 'delivery' ? [finalAddr, finalFloor, finalRefs].filter(Boolean).join(' — ') : '',
         couponCode: couponStatus?.valid ? couponCode.trim() : null,
-        idempotencyKey
+        idempotencyKey,
+        acceptPartial: !!acceptPartialItems
       });
 
-      // Pedido creado (o recuperado idempotentemente) con éxito → limpiar el key
       try { sessionStorage.removeItem('janz_idempotency_key'); } catch {}
 
       try { localStorage.setItem('janz_client_data', JSON.stringify({ name: client.name, nickname: client.nickname, whatsapp: client.whatsapp, address: finalAddr, floor: finalFloor, references: finalRefs })); } catch {}
       try { localStorage.setItem('janz_pending_order', res.data.publicCode || res.data.orderNumber); } catch {}
       setPendingOrderCode(res.data.publicCode || res.data.orderNumber);
       setOrderResult(res.data); setOrderStatus('pending');
+      setStockIssueModal(null);
       setSubmitting(false);
       setSubmitSuccess(true);
       setTimeout(() => {
         setSubmitSuccess(false);
         setStep('tracking');
-        // Mostrar modal de notificaciones 1s después del tracking si aún no decidió
         try {
           if (!localStorage.getItem('janz_push_granted') && !localStorage.getItem('janz_push_dismissed')) {
             setTimeout(() => setShowPushBanner(true), 1000);
@@ -746,9 +786,13 @@ export default function PublicOrder() {
       }, 2500);
     } catch (e) {
       setSubmitting(false);
-      // NO limpiar el idempotencyKey en caso de error → si el cliente reintenta,
-      // reutiliza el mismo key y el backend detecta si el pedido ya se creó.
-      toast.error(e.response?.data?.message || 'Error al enviar pedido');
+      // ── Manejo de stockIssue (409) ──────────────────────────────────────
+      if (e.response?.status === 409 && e.response?.data?.stockIssue) {
+        const { unavailableItems, adjustedItems, adjustedTotal } = e.response.data;
+        setStockIssueModal({ unavailableItems, adjustedItems, adjustedTotal });
+      } else {
+        toast.error(e.response?.data?.message || 'Error al enviar pedido');
+      }
     } finally {
       isSubmittingRef.current = false;
     }
@@ -905,8 +949,46 @@ export default function PublicOrder() {
           {paymentMethod === 'efectivo' && <div style={{ color: '#444', fontSize: '0.78rem', marginTop: 10 }}>💵 Tené listo el efectivo</div>}
           {paymentMethod === 'transferencia' && <div style={{ color: '#444', fontSize: '0.78rem', marginTop: 10 }}>🏦 Enviá el comprobante por WhatsApp{transferAlias && <span style={{ color: GOLD, fontWeight: 700 }}> · Alias: {transferAlias}</span>}</div>}
         </div>
-        <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: '0.75rem', color: '#ef4444' }}>⚠️ Si necesitás cancelar, contactanos por WhatsApp.</div>
-        <button onClick={() => { setCart([]); setStep('menu'); setOrderResult(null); setOrderStatus(null); setPaymentMethod(''); setCouponCode(''); setCouponStatus(null); setSelectedZone(''); setScheduledFor('asap'); try { localStorage.removeItem('janz_pending_order'); } catch {} setPendingOrderCode(null); }} style={{ width: '100%', background: 'rgba(255,255,255,0.04)', color: '#555', border: '1px solid rgba(255,255,255,0.07)', padding: '13px', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>Hacer otro pedido</button>
+        {/* ── Botón cancelar (solo si está pending) ──────────────────────── */}
+        {orderStatus === 'pending' && !showCancelConfirm && (
+          <button
+            onClick={() => setShowCancelConfirm(true)}
+            style={{ width: '100%', background: 'transparent', color: 'rgba(239,68,68,0.5)', border: '1px solid rgba(239,68,68,0.15)', padding: '11px', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: '0.82rem', marginBottom: 10 }}>
+            ✕ Cancelar pedido
+          </button>
+        )}
+
+        {/* ── Modal de confirmación de cancelación ────────────────────────── */}
+        {showCancelConfirm && (
+          <div style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 12, padding: '16px', marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, color: 'white', marginBottom: 6, fontSize: '0.92rem' }}>¿Seguro que querés cancelar?</div>
+            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', marginBottom: 14, lineHeight: 1.5 }}>
+              Una vez cancelado no podemos revertirlo. Si el problema es con tu pedido, podés escribirnos por WhatsApp.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setShowCancelConfirm(false)}
+                style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: '#aaa', border: '1px solid rgba(255,255,255,0.08)', padding: '11px', borderRadius: 9, fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+                Volver
+              </button>
+              <button
+                onClick={handleClientCancel}
+                disabled={cancelando}
+                style={{ flex: 1, background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', padding: '11px', borderRadius: 9, fontWeight: 700, cursor: cancelando ? 'not-allowed' : 'pointer', fontSize: '0.85rem', opacity: cancelando ? 0.6 : 1 }}>
+                {cancelando ? 'Cancelando...' : 'Sí, cancelar'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Estado cancelado ────────────────────────────────────────────── */}
+        {orderStatus === 'cancelled' && (
+          <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 10, padding: '12px 14px', marginBottom: 14, fontSize: '0.82rem', color: '#f87171', textAlign: 'center' }}>
+            ✕ Tu pedido fue cancelado. Te avisamos por WhatsApp.
+          </div>
+        )}
+
+        <button onClick={() => { setCart([]); setStep('menu'); setOrderResult(null); setOrderStatus(null); setPaymentMethod(''); setCouponCode(''); setCouponStatus(null); setSelectedZone(''); setScheduledFor('asap'); try { localStorage.removeItem('janz_pending_order'); } catch {}; setPendingOrderCode(null); setShowCancelConfirm(false); }} style={{ width: '100%', background: 'rgba(255,255,255,0.04)', color: '#555', border: '1px solid rgba(255,255,255,0.07)', padding: '13px', borderRadius: 10, fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>Hacer otro pedido</button>
       </div>
     </div>
   );
@@ -914,14 +996,14 @@ export default function PublicOrder() {
   const css = `
     .janz-topbar { display:flex; align-items:center; justify-content:space-between; padding:7px 16px; min-height:52px; background:#080808; border-bottom:1px solid rgba(255,255,255,0.06); gap:8px; position:sticky; top:0; z-index:100; backdrop-filter:blur(12px); box-sizing:border-box; }
     .janz-topbar-logo { height:34px; object-fit:contain; opacity:0.95; flex-shrink:0; }
-    .janz-topbar-status { display:none; align-items:center; gap:7px; border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:6px 11px; font-size:0.71rem; white-space:nowrap; flex-shrink:1; min-width:0; overflow:hidden; }
+    .janz-topbar-status { display:flex; align-items:center; gap:7px; border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:5px 9px; font-size:0.65rem; white-space:nowrap; flex-shrink:1; min-width:0; overflow:hidden; max-width:calc(100% - 140px); }
     .janz-topbar-sep { width:1px; height:13px; flex-shrink:0; background:rgba(255,255,255,0.12); }
     .janz-topbar-days { display:none; }
     .janz-topbar-actions { display:flex; gap:7px; align-items:center; flex-shrink:0; }
     .janz-topbar-btn-pedir { background:#E8B84B; color:#000; border:none; padding:8px 14px; border-radius:8px; font-weight:800; cursor:pointer; font-size:0.78rem; white-space:nowrap; }
     .janz-topbar-btn-prode { display:none; background:rgba(255,255,255,0.06); color:white; border:1px solid rgba(255,255,255,0.12); padding:8px 14px; border-radius:8px; font-weight:800; text-decoration:none; font-size:0.78rem; white-space:nowrap; }
     @media (min-width: 480px) {
-      .janz-topbar-status { display:flex; }
+      .janz-topbar-status { font-size:0.71rem; padding:6px 11px; }
       .janz-topbar-btn-pedir { font-size:0.8rem; padding:8px 16px; }
     }
     @media (min-width: 640px) {
@@ -976,11 +1058,72 @@ export default function PublicOrder() {
   const hasAdds    = availableAdditionals.length > 0;
 
   const navItems = [
-    hasBurgers && { key: 'burgers',    label: '🍔 Burgers'     },
-    hasPapas   && { key: 'papas',      label: '🍟 Papas'       },
-    hasOtros   && { key: 'otros',      label: '🥤 Bebidas'      },
-    hasAdds    && { key: 'adicionales',label: '+ Extras'       },
+    hasBurgers          && { key: 'burgers',  label: '🍔 Burgers'   },
+    promos.length > 0   && { key: 'promos',   label: '🎁 Combos'    },
+    hasPapas            && { key: 'papas',    label: '🍟 Papas'      },
+    hasOtros            && { key: 'otros',    label: '🥤 Bebidas'    },
+    hasAdds             && { key: 'adicionales', label: '+ Extras'   },
   ].filter(Boolean);
+
+  // ── PromoCard ─────────────────────────────────────────────────────────────
+  const PromoCard = ({ promo }) => {
+    const inCart = cart.find(i => i.promo === promo._id);
+    const qty    = inCart?.quantity || 0;
+
+    const handleAdd = () => {
+      setCart(prev => {
+        const exists = prev.find(i => i.promo === promo._id);
+        if (exists) return prev.map(i => i.promo === promo._id ? { ...i, quantity: i.quantity + 1 } : i);
+        return [...prev, {
+          promo:       promo._id,
+          promoName:   promo.name,
+          product:     null,           // las promos no tienen un product directo
+          productName: promo.name,
+          variant:     'Combo',
+          unitPrice:   promo.salePrice,
+          quantity:    1,
+          additionals: [],
+          image:       promo.image,
+        }];
+      });
+    };
+    const handleRemove = () => setCart(prev => prev.map(i => i.promo === promo._id ? { ...i, quantity: Math.max(0, i.quantity - 1) } : i).filter(i => !i.promo || i.quantity > 0));
+
+    return (
+      <div style={{ background: '#0f0f0f', border: '1px solid rgba(232,184,75,0.2)', borderRadius: 14, marginBottom: 10, overflow: 'hidden' }}>
+        {promo.image && <img src={promo.image} alt={promo.name} style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />}
+        <div style={{ padding: '12px 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, color: 'white', fontSize: '0.95rem', marginBottom: 2 }}>{promo.name}</div>
+              {promo.description && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', marginBottom: 6 }}>{promo.description}</div>}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                {promo.components.map((c, i) => (
+                  <span key={i} style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 99, padding: '2px 8px', color: 'rgba(255,255,255,0.45)' }}>
+                    ×{c.quantity} {c.name} {c.variant}
+                  </span>
+                ))}
+              </div>
+              <div style={{ color: GOLD, fontWeight: 900, fontSize: '1.1rem' }}>{fmt(promo.salePrice)}</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 12, flexShrink: 0 }}>
+              {qty > 0 ? (
+                <>
+                  <button onClick={handleRemove} style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', fontSize: '1rem', cursor: 'pointer' }}>−</button>
+                  <span style={{ fontWeight: 800, color: 'white', minWidth: 18, textAlign: 'center' }}>{qty}</span>
+                  <button onClick={handleAdd} style={{ width: 30, height: 30, borderRadius: '50%', background: GOLD, border: 'none', color: '#000', fontSize: '1rem', cursor: 'pointer', fontWeight: 800 }}>+</button>
+                </>
+              ) : (
+                <button onClick={handleAdd} style={{ background: GOLD, color: '#000', border: 'none', padding: '8px 18px', borderRadius: 10, fontWeight: 800, cursor: 'pointer', fontSize: '0.85rem' }}>
+                  Agregar
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const ProductCard = ({ name, variants }) => {
     const order = { Simple: 0, Doble: 1, Triple: 2 };
@@ -1001,22 +1144,29 @@ export default function PublicOrder() {
               )}
             </div>
             {description && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', fontWeight: 500, marginTop: 4, lineHeight: 1.4 }}>{description}</div>}
+            {sorted[0]?.stockWarning && sorted.some(p => p.available) && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(251,146,60,0.12)', border: '1px solid rgba(251,146,60,0.3)', borderRadius: 99, padding: '2px 9px', marginTop: 6, fontSize: '0.65rem', fontWeight: 700, color: '#fb923c' }}>
+                🔥 Quedan pocas
+              </div>
+            )}
           </div>
           <div style={{ paddingBottom: 6 }}>
             {sorted.map((p, idx) => {
               const inCart = cart.find(i => i.product === p._id);
               const unavailable = !p.available;
               return (
-                <div key={p._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderTop: idx > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none', opacity: unavailable ? 0.4 : 1 }}>
+                <div key={p._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderTop: idx > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none', opacity: unavailable ? 0.5 : 1 }}>
                   <div>
                     <div style={{ fontWeight: 700, color: 'rgba(255,255,255,0.5)', fontSize: '0.78rem' }}>
                       {sorted.length > 1 ? p.variant : ''}
-                      {unavailable && <span style={{ color: '#ef4444', fontSize: '0.6rem', marginLeft: 8 }}>NO DISPONIBLE</span>}
+                      {unavailable && <span style={{ display: 'block', color: '#f87171', fontSize: '0.68rem', marginTop: 2, fontWeight: 600 }}>Se nos acabó por hoy 👋</span>}
                     </div>
-                    <div style={{ color: GOLD, fontWeight: 800, fontSize: '0.92rem', marginTop: 1 }}>
-                      {idx === 0 && sorted.length > 1 && <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 500, fontSize: '0.72rem', marginRight: 3 }}>Desde</span>}
-                      {fmt(p.salePrice)}
-                    </div>
+                    {!unavailable && (
+                      <div style={{ color: GOLD, fontWeight: 800, fontSize: '0.92rem', marginTop: 1 }}>
+                        {idx === 0 && sorted.length > 1 && <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 500, fontSize: '0.72rem', marginRight: 3 }}>Desde</span>}
+                        {fmt(p.salePrice)}
+                      </div>
+                    )}
                   </div>
                   {!unavailable && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1062,6 +1212,70 @@ export default function PublicOrder() {
                   <img src={logoJanz} alt="Janz" style={{ height: 44, objectFit: 'contain', marginBottom: 24, opacity: 0.9 }} />
                   <div style={{ width: 48, height: 48, border: '3px solid rgba(255,255,255,0.08)', borderTopColor: GOLD, borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 20px' }} />
                   <div style={{ fontWeight: 700, color: 'rgba(255,255,255,0.6)', fontSize: '0.95rem' }}>Enviando tu pedido...</div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Modal de ajuste de pedido por stock insuficiente ─────────────── */}
+        {stockIssueModal && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 350 }}>
+            <div style={{ background: '#0f0f0f', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 520, padding: 24, maxHeight: '85vh', overflowY: 'auto', border: '1px solid rgba(239,68,68,0.25)', borderBottom: 'none' }}>
+              <div style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 99, margin: '0 auto 20px' }} />
+              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'white', marginBottom: 6 }}>⚠️ Problema con tu pedido</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', marginBottom: 20, lineHeight: 1.6 }}>
+                Algunos productos se agotaron justo antes de confirmar tu pedido. Disculpá el inconveniente 🙏
+              </div>
+              {stockIssueModal.unavailableItems.length > 0 && (
+                <div style={{ marginBottom: 16, padding: '12px 14px', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 12 }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Sin stock</div>
+                  {stockIssueModal.unavailableItems.map((item, i) => (
+                    <div key={i} style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: 4 }}>
+                      ✕ {item.productName} {item.variant}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {stockIssueModal.adjustedItems.length > 0 ? (
+                <>
+                  <div style={{ marginBottom: 16, padding: '12px 14px', background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 12 }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Disponible</div>
+                    {stockIssueModal.adjustedItems.map((item, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 4 }}>
+                        <span style={{ color: '#aaa' }}>×{item.quantity} {item.productName} {item.variant}</span>
+                        <span style={{ color: 'white', fontWeight: 600 }}>{fmt(item.unitPrice * item.quantity)}</span>
+                      </div>
+                    ))}
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 10, paddingTop: 10, display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: GOLD, fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase' }}>Nuevo total</span>
+                      <span style={{ color: 'white', fontWeight: 900, fontSize: '1.2rem' }}>{fmt(stockIssueModal.adjustedTotal)}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={() => setStockIssueModal(null)} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: '#666', border: '1px solid rgba(255,255,255,0.08)', padding: '13px', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>
+                      Cancelar
+                    </button>
+                    <button onClick={() => doSubmit(stockIssueModal.adjustedItems)} style={{ flex: 2, background: GOLD, color: '#000', border: 'none', padding: '13px', borderRadius: 10, fontWeight: 800, cursor: 'pointer', fontSize: '0.9rem' }}>
+                      Confirmar así ✅
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', textAlign: 'center', padding: '12px 0 20px', lineHeight: 1.7 }}>
+                    No hay ningún producto disponible para tu pedido en este momento.<br />Podés intentar más tarde o contactarnos por WhatsApp.
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={() => setStockIssueModal(null)} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', color: '#aaa', border: '1px solid rgba(255,255,255,0.08)', padding: '13px', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>
+                      Cerrar
+                    </button>
+                    {businessWhatsapp && (
+                      <a href={`https://wa.me/54${businessWhatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#25D366', color: 'white', padding: '13px', borderRadius: 10, fontWeight: 700, textDecoration: 'none', fontSize: '0.9rem' }}>
+                        <FaWhatsapp size={18} /> Consultar
+                      </a>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -1748,6 +1962,11 @@ export default function PublicOrder() {
           );
         })()}
 
+        {anyLowStock && open && (
+          <div style={{ margin: '10px 16px 0', background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.25)', borderRadius: 10, padding: '10px 14px', color: '#fb923c', textAlign: 'center', fontWeight: 600, fontSize: '0.82rem' }}>
+            🔥 Algunos productos tienen stock limitado — pedí antes de que se agoten
+          </div>
+        )}
         {!open && (
           <div style={{ margin: '10px 16px 0', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '10px 14px', color: '#ef4444', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem' }}>
             🔴 {todayOverride?.status === 'closed' && todayOverride.message ? todayOverride.message : 'En este momento no estamos tomando pedidos'}
@@ -1795,6 +2014,14 @@ export default function PublicOrder() {
           <div className="janz-desktop-layout">
             <div className="janz-menu-col" style={{ padding: '8px 16px 0' }}>
               {hasBurgers && <div ref={el => sectionRefs.current['burgers'] = el} data-section="burgers"><SectionHeader label="Hamburguesas" />{menuGroups.filter(g => g.productType === 'burger').map(g => <ProductCard key={g.name} name={g.name} variants={g.variants} />)}</div>}
+              {promos.length > 0 && (
+                <div ref={el => sectionRefs.current['promos'] = el} data-section="promos">
+                  <SectionHeader label="Combos" />
+                  {promos.map(promo => (
+                    <PromoCard key={promo._id} promo={promo} />
+                  ))}
+                </div>
+              )}
               {hasPapas   && <div ref={el => sectionRefs.current['papas'] = el} data-section="papas"><SectionHeader label="Papas" />{menuGroups.filter(g => g.productType === 'papas').map(g => <ProductCard key={g.name} name={g.name} variants={g.variants} />)}</div>}
               {hasOtros   && <div ref={el => sectionRefs.current['otros'] = el} data-section="otros"><SectionHeader label="Otros" />{menuGroups.filter(g => g.productType !== 'burger' && g.productType !== 'papas').map(g => <ProductCard key={g.name} name={g.name} variants={g.variants} />)}</div>}
               {hasAdds && (

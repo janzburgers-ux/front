@@ -58,6 +58,7 @@ export default function Prode() {
   // ── Reset de datos de prueba ─────────────────────────────────────────────────
   const [resetClientId,   setResetClientId  ] = useState('');
   const [resetLoading,    setResetLoading   ] = useState(false);
+  const [recalcLoading,   setRecalcLoading  ] = useState(false);
   const [confirmNuclear,  setConfirmNuclear ] = useState(false);
   const [nuclearLoading,  setNuclearLoading ] = useState(false);
 
@@ -66,6 +67,10 @@ export default function Prode() {
   const [partsLoading,    setPartsLoading   ] = useState(false);
   const [premios,         setPremios        ] = useState(null);
   const [premiosLoading,  setPremiosLoading ] = useState(false);
+  const [prizesTop3,        setPrizesTop3       ] = useState([]);
+  const [prizesTop3Loading, setPrizesTop3Loading] = useState(false);
+  const [finalizingPrizes,  setFinalizingPrizes ] = useState(false);
+  const [confirmFinalize,   setConfirmFinalize  ] = useState(false);
   const [expandedPart,    setExpandedPart   ] = useState(null);      // clientId expandido
   const [partPreds,       setPartPreds      ] = useState({});         // { clientId: { loading, data } }
   const [partFilter,      setPartFilter     ] = useState('all');      // 'all' | 'ok' | 'nok'
@@ -111,6 +116,7 @@ export default function Prode() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (tab === 'premios') loadPrizesTop3(); }, [tab]);
 
   const handleDebugApi = async () => {
     setDebugging(true);
@@ -222,6 +228,36 @@ export default function Prode() {
     finally { setPremiosLoading(false); }
   };
 
+  // ── Sistema de premios automáticos (top 3) ────────────────────────────────────
+  const loadPrizesTop3 = async () => {
+    setPrizesTop3Loading(true);
+    try {
+      const r = await API.get('/prode/premios-top3');
+      setPrizesTop3(r.data);
+    } catch { toast.error('Error cargando auditoría de premios'); }
+    finally { setPrizesTop3Loading(false); }
+  };
+
+  const handleFinalizePrizes = async () => {
+    setConfirmFinalize(false);
+    setFinalizingPrizes(true);
+    try {
+      const r = await API.post('/prode/finalizar-premios');
+      const { awarded = [], skipped = [] } = r.data;
+      if (awarded.length > 0) {
+        toast.success(`🏆 Premiados: ${awarded.map(a => `#${a.position} ${a.clientName}`).join(', ')}`);
+      }
+      if (skipped.length > 0 && awarded.length === 0) {
+        toast.error('Ningún puesto nuevo para premiar (ya estaban premiados o sin competidores elegibles).');
+      }
+      await loadPrizesTop3();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Error al finalizar y premiar');
+    } finally {
+      setFinalizingPrizes(false);
+    }
+  };
+
   const loadParticipantes = async () => {
     try {
       const r = await API.get('/prode/participantes');
@@ -273,6 +309,20 @@ export default function Prode() {
       setRanking(rankRes.data);
     } catch { toast.error('Error al resetear'); }
     finally { setResetLoading(false); }
+  };
+
+  const handleRecalcCliente = async () => {
+    if (!resetClientId) return;
+    const cliente = ranking.find(r => String(r.clientId) === resetClientId);
+    if (!window.confirm(`¿Recalcular los puntos de pronósticos de ${cliente?.nombre || resetClientId} desde cero? Los demás clientes no se ven afectados.`)) return;
+    setRecalcLoading(true);
+    try {
+      const r = await API.post(`/prode/evaluar-cliente/${resetClientId}`);
+      toast.success(`✅ ${r.data.message}`);
+      const rankRes = await API.get('/prode/ranking');
+      setRanking(rankRes.data);
+    } catch (e) { toast.error(e.response?.data?.message || 'Error al recalcular puntos'); }
+    finally { setRecalcLoading(false); }
   };
 
   const handleNuclearReset = async () => {
@@ -782,6 +832,76 @@ export default function Prode() {
         {/* TAB: Bonificaciones */}
         {tab === 'premios' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* ── Premiación automática del Top 3 (cupones reales) ──────────────── */}
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+                <div>
+                  <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Trophy size={16} /> Premiación automática — Top 3
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 3, maxWidth: 480 }}>
+                    Genera y manda por WhatsApp los cupones reales del 1°, 2° y 3° puesto (1° recibe 4 semanas
+                    escalonadas automáticamente). Es seguro hacer click de nuevo: los puestos ya premiados se saltean.
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-secondary" onClick={loadPrizesTop3} disabled={prizesTop3Loading}>
+                    <RefreshCw size={12} /> Actualizar
+                  </button>
+                  <button className="btn btn-primary" disabled={finalizingPrizes} onClick={() => setConfirmFinalize(true)}>
+                    {finalizingPrizes ? 'Premiando...' : '🏁 Finalizar y Premiar Top 3'}
+                  </button>
+                </div>
+              </div>
+
+              {confirmFinalize && (
+                <div style={{ marginTop: 12, padding: 12, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 13, marginBottom: 10 }}>
+                    ¿Confirmás finalizar el Prode y premiar al top 3 con el ranking actual? Se generan y envían
+                    cupones reales por WhatsApp ahora mismo.
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-primary" onClick={handleFinalizePrizes}>Sí, premiar ahora</button>
+                    <button className="btn btn-secondary" onClick={() => setConfirmFinalize(false)}>Cancelar</button>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: 14 }}>
+                {prizesTop3Loading ? (
+                  <div style={{ color: 'var(--gray)', fontSize: 13 }}>Cargando...</div>
+                ) : prizesTop3.length === 0 ? (
+                  <div style={{ color: 'var(--gray)', fontSize: 13 }}>Todavía no se premió a nadie en esta temporada.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {prizesTop3.map(p => (
+                      <div key={p._id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
+                          <div style={{ fontWeight: 700 }}>#{p.position} · {p.clientName}</div>
+                          <div style={{ fontSize: 12, color: 'var(--gray)' }}>{p.prizeLabel}</div>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                          {p.weeks.map(w => (
+                            <div key={w.label} style={{
+                              display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5,
+                              padding: '4px 8px', borderRadius: 6,
+                              background: w.sent ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.05)',
+                              border: `1px solid ${w.sent ? 'rgba(74,222,128,0.3)' : 'var(--border)'}`,
+                              color: w.sent ? '#4ade80' : 'var(--gray)',
+                            }}>
+                              {w.sent ? <CheckCircle size={11} /> : <Calendar size={11} />}
+                              {w.label !== 'UNICO' ? w.label : ''} {w.couponCode || 'pendiente'}
+                              {!w.sent && ` · ${new Date(w.sendAt).toLocaleDateString('es-AR')}`}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {!premios ? (
               <button className="btn btn-primary" disabled={premiosLoading} onClick={loadPremios}>
                 {premiosLoading ? 'Cargando...' : '🎁 Cargar segmentos de premio'}
@@ -1143,6 +1263,44 @@ export default function Prode() {
               <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 10, lineHeight: 1.5 }}>
                 Re-evaluar: resetea y recalcula los puntos de todos los partidos ya terminados. <b>No borra pronósticos.</b>
                 Necesario si los puntos de algún cliente no coinciden con lo esperado.
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border)', marginTop: 16, paddingTop: 16 }}>
+                <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>
+                  Acciones sobre un cliente puntual
+                </h4>
+                <select
+                  value={resetClientId}
+                  onChange={e => setResetClientId(e.target.value)}
+                  style={{ width: '100%', marginBottom: 10 }}
+                >
+                  <option value="">Seleccioná un cliente del ranking...</option>
+                  {ranking.map(r => (
+                    <option key={r.clientId} value={r.clientId}>{r.nombre}</option>
+                  ))}
+                </select>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={handleRecalcCliente}
+                    disabled={!resetClientId || recalcLoading}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                  >
+                    {recalcLoading ? '⏳ Procesando...' : '🔄 Recalcular puntos de este cliente'}
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    onClick={handleResetCliente}
+                    disabled={!resetClientId || resetLoading}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                  >
+                    {resetLoading ? '⏳ Procesando...' : '🗑️ Borrar todas sus predicciones y puntos'}
+                  </button>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 10, lineHeight: 1.5 }}>
+                  <b>Recalcular:</b> resetea y vuelve a evaluar solo los pronósticos de este cliente sobre partidos ya terminados; no toca a los demás.<br />
+                  <b>Borrar:</b> elimina por completo sus pronósticos y puntos (irreversible).
+                </div>
               </div>
             </div>
           </div>
